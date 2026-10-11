@@ -223,6 +223,22 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install required SDK packages
+        run: |
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT}}"
+          echo "Using Android SDK at ${sdk}"
+          sdkmanager="$(find "${sdk}/cmdline-tools" -name sdkmanager -type f 2>/dev/null | sort | tail -n1)"
+          if [ -z "${sdkmanager}" ]; then
+            sdkmanager="$(command -v sdkmanager)"
+          fi
+          echo "Using sdkmanager at ${sdkmanager}"
+          # API 37 ships as "platforms;android-37.0" (minor version suffix),
+          # not "platforms;android-37". Fail loudly if it is unavailable.
+          "${sdkmanager}" --install "platform-tools" "platforms;android-37.0"
+          "${sdkmanager}" --install "build-tools;37.0.0"
+          yes | "${sdkmanager}" --licenses >/dev/null 2>&1 || true
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
       - name: Configure local.properties
@@ -232,14 +248,27 @@ jobs:
           else
             touch local.properties
           fi
+          # Point Gradle at the runner's Android SDK unless already provided.
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT}}"
+          if ! grep -Eq '^sdk\.dir=' local.properties; then
+            echo "sdk.dir=${sdk}" >> local.properties
+          fi
       - name: Build release APK
-        run: ./gradlew :androidApp:assembleFullRelease --no-configuration-cache --no-daemon --stacktrace
+        run: |
+          ./gradlew :androidApp:assembleFullRelease \
+            -PreleaseMinifyEnabled=false \
+            --no-configuration-cache --no-daemon --stacktrace
       - name: Collect artifact
         env:
           VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           mkdir -p out
           apk="$(find androidApp/build/outputs/apk/full/release -maxdepth 1 -name '*.apk' | head -n1)"
+          if [ -z "${apk}" ]; then
+            echo "No APK found." >&2
+            find androidApp/build/outputs -name '*.apk' >&2 || true
+            exit 1
+          fi
           cp "${apk}" "out/NuvioDev-${VERSION}-android.apk"
       - name: Upload artifact
         uses: actions/upload-artifact@v7
