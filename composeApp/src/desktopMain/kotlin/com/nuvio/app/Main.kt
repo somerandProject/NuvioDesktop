@@ -171,7 +171,7 @@ fun main(args: Array<String>) {
                 if (!minimizeToTray || !DesktopTrayManager.isSupported) {
                     onDispose { }
                 } else {
-                    val restore = { runCatching { window.isVisible = true } }
+                    val restore = { runCatching { window.isVisible = true }; Unit }
                     DesktopTrayManager.install(
                         tooltip = "Nuvio",
                         onRestore = restore,

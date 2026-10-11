@@ -75,6 +75,8 @@ import nuvio.composeapp.generated.resources.updates_preparing_download
 import nuvio.composeapp.generated.resources.updates_release_notes
 import nuvio.composeapp.generated.resources.updates_title_allow_installs
 import nuvio.composeapp.generated.resources.updates_title_available
+import nuvio.composeapp.generated.resources.updates_whats_new_body
+import nuvio.composeapp.generated.resources.updates_whats_new_title
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
