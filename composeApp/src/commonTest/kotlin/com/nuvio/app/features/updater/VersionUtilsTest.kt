@@ -46,4 +46,17 @@ class VersionUtilsTest {
     fun `current beta naming is recognized as prerelease`() {
         assertTrue(VersionUtils.isPrerelease("0.8.12-beta"))
     }
+
+    @Test
+    fun `two component versions are accepted`() {
+        assertTrue(VersionUtils.isRemoteNewer("0.2", "0.1"))
+        assertFalse(VersionUtils.isRemoteNewer("0.1", "0.1"))
+    }
+
+    @Test
+    fun `two component version compares against three component versions`() {
+        assertTrue(VersionUtils.isRemoteNewer("0.2", "0.1.9"))
+        assertFalse(VersionUtils.isRemoteNewer("0.1", "0.1.9"))
+        assertTrue(VersionUtils.isRemoteNewer("1.0.0", "0.9"))
+    }
 }

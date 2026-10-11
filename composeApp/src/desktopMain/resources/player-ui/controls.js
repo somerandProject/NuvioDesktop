@@ -1175,6 +1175,24 @@ const subtitleLanguages = () => normalizeItems(state.subtitleLanguageItems).map(
 const selectedSubtitleOption = options => options.find(option => option.selected) ||
   options.find(option => option.id === String(state.selectedSubtitleOptionId || ""));
 
+// Cycles Off -> built-in/addon subtitle -> ... -> Off. Uses the same option list
+// and payloads as the subtitles modal, so mixed built-in and addon tracks cycle
+// correctly.
+const cyclePlayerSubtitle = () => {
+  const options = [
+    { id: "__off__", kind: "off", label: state.offLabel || "Off" },
+    ...subtitleSelectionOptions(),
+  ];
+  const currentIndex = options.findIndex(option => option.selected);
+  const nextIndex = (currentIndex + 1) % options.length;
+  const next = options[nextIndex];
+  const label = next.label || next.title || displayLanguageName(next.languageKey) || (state.subtitlesLabel || "Subs");
+  if (next.kind === "builtIn") send("selectBuiltInSubtitleTrack", next.index);
+  else if (next.kind === "addon") send("selectAddonSubtitle", next.index);
+  else send("selectBuiltInSubtitleTrack", -1);
+  showPlayerToast(label, { icon: "icon-subtitles" });
+};
+
 const resetSubtitleSelectionState = () => {
   const options = subtitleSelectionOptions();
   const languages = subtitleLanguages();
@@ -3764,8 +3782,10 @@ document.addEventListener("keydown", event => {
   }
   if (event.code === "KeyS") {
     event.preventDefault();
-    if (activeModal === "subtitles") closePlayerModal(true);
-    else openPlayerModal("subtitles");
+    // Cycle straight through the available subtitle tracks (Off -> sub 1 -> sub 2
+    // ... -> Off) instead of only toggling subtitles on/off, and show the active
+    // subtitle as a toast.
+    cyclePlayerSubtitle();
     return;
   }
   if (event.code === "KeyE") {

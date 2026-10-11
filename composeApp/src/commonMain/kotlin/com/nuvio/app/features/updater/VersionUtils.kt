@@ -44,8 +44,10 @@ internal data class SemanticVersion(
 }
 
 internal object VersionUtils {
+    // Accepts 1, 1.2, or 1.2.3 (with optional -prerelease/+build metadata) so the
+    // fork can version itself as "0.1" while the upstream app keeps "x.y.z".
     private val versionPattern = Regex(
-        "^(\\d+)\\.(\\d+)\\.(\\d+)" +
+        "^(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?" +
             "(?:-([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?" +
             "(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
     )
@@ -59,8 +61,8 @@ internal object VersionUtils {
         val match = versionPattern.matchEntire(normalize(raw)) ?: return null
         return SemanticVersion(
             major = match.groupValues[1].toLongOrNull() ?: return null,
-            minor = match.groupValues[2].toLongOrNull() ?: return null,
-            patch = match.groupValues[3].toLongOrNull() ?: return null,
+            minor = match.groupValues[2].toLongOrNull() ?: 0L,
+            patch = match.groupValues[3].toLongOrNull() ?: 0L,
             prerelease = match.groupValues[4]
                 .takeIf(String::isNotEmpty)
                 ?.split('.')

@@ -1,0 +1,324 @@
+name: Release NuvioDev (all platforms)
+
+# Builds and publishes a NuvioDev release for Windows, macOS, Linux and Android.
+# Releases are tagged "NuvioDev-v<version>" and a rolling "NuvioDev Latest" release
+# is kept so the in-app updater can find the newest build. macOS DMGs are built
+# unsigned (expected on a fork without Apple signing secrets).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Override version (defaults to composeApp/Configuration/DesktopVersion.properties)
+        required: false
+        type: string
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nuvio-dev-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NUVIO_DEV_PACKAGE_NAME: NuvioDev
+  NUVIO_DEV_UPGRADE_UUID: 7a2f1c94-2d63-4b6e-9c1d-4f8b7a0e2d31
+  LOCAL_PROPERTIES_BASE64: ${{ secrets.NUVIO_DESKTOP_LOCAL_PROPERTIES_BASE64 }}
+
+jobs:
+  metadata:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ inputs.version }}"
+          if [ -z "${version}" ]; then
+            version="$(grep -E '^VERSION_NAME=' composeApp/Configuration/DesktopVersion.properties | cut -d= -f2 | tr -d '[:space:]')"
+          fi
+          [ -n "${version}" ] || { echo "Could not resolve version." >&2; exit 1; }
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${version}" >> "$GITHUB_OUTPUT"
+
+  windows:
+    name: Windows x64
+    needs: metadata
+    runs-on: windows-2022
+    env:
+      WEBVIEW2_VERSION: 1.0.4078.44
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Fetch Windows runtime
+        shell: bash
+        run: |
+          git lfs pull --include="composeApp/src/desktopMain/native/windows/runtime/**" --exclude=""
+          test -f composeApp/src/desktopMain/native/windows/runtime/libmpv-2.dll
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Configure local.properties
+        shell: bash
+        run: |
+          if [[ -n "${LOCAL_PROPERTIES_BASE64}" ]]; then
+            printf '%s' "${LOCAL_PROPERTIES_BASE64}" | base64 --decode > local.properties
+          else
+            touch local.properties
+          fi
+      - name: Install WebView2 SDK
+        shell: pwsh
+        run: |
+          nuget install Microsoft.Web.WebView2 -Version $env:WEBVIEW2_VERSION -OutputDirectory "$env:RUNNER_TEMP\nuget" -DirectDownload -NonInteractive -NoCache
+          $root = Join-Path $env:RUNNER_TEMP "nuget\Microsoft.Web.WebView2.$env:WEBVIEW2_VERSION"
+          "WEBVIEW2_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          & .\gradlew.bat :composeApp:packageReleaseMsi `
+            "-Pnuvio.webview2.dir=$env:WEBVIEW2_ROOT" `
+            "-Pnuvio.desktop.packageName=$env:NUVIO_DEV_PACKAGE_NAME" `
+            "-Pnuvio.desktop.upgradeUuid=$env:NUVIO_DEV_UPGRADE_UUID" `
+            "-Pcompose.desktop.packaging.checkJdkVendor=false" `
+            --no-configuration-cache --no-daemon --stacktrace
+      - name: Collect artifact
+        shell: bash
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          mkdir -p out
+          cp "composeApp/build/compose/release-msis/NuvioDev-Windows-x64-${VERSION}.msi" "out/NuvioDev-${VERSION}-windows-x64.msi"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-dev-windows-x64
+          path: out/*.msi
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.arch }}
+    needs: metadata
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Fetch macOS runtime
+        env:
+          MACOS_ARCH: ${{ matrix.arch }}
+        run: git lfs pull --include="composeApp/src/desktopMain/native/macos/runtime/${MACOS_ARCH}/**" --exclude=""
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Configure local.properties
+        run: |
+          if [ -n "${LOCAL_PROPERTIES_BASE64}" ]; then
+            printf '%s' "${LOCAL_PROPERTIES_BASE64}" | base64 --decode > local.properties
+          else
+            touch local.properties
+          fi
+      - name: Build unsigned DMG
+        env:
+          MACOS_ARCH: ${{ matrix.arch }}
+          NUVIO_MACOS_NOTARY_KEYCHAIN_PROFILE: ''
+          NUVIO_MACOS_SIGNING_IDENTITY: ''
+        run: |
+          ./gradlew :composeApp:packageReleaseDmg \
+            "-Pnuvio.macos.arch=${MACOS_ARCH}" \
+            "-Pnuvio.desktop.packageName=${NUVIO_DEV_PACKAGE_NAME}" \
+            -Pcompose.desktop.packaging.checkJdkVendor=false \
+            --no-configuration-cache --no-daemon --stacktrace
+      - name: Collect artifact
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+          MACOS_ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p out
+          cp "composeApp/build/compose/release-dmgs/NuvioDev-macOS-${MACOS_ARCH}-${VERSION}.dmg" "out/NuvioDev-${VERSION}-macos-${MACOS_ARCH}.dmg"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-dev-macos-${{ matrix.arch }}
+          path: out/*.dmg
+          if-no-files-found: error
+
+  linux:
+    name: Linux x64
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Install Linux build dependencies
+        run: bash ./scripts/linux/install-desktop-build-dependencies.sh fakeroot rpm cpio
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Configure desktop runtime
+        run: bash ./scripts/linux/configure-desktop-runtime.sh
+      - name: Build DEB and RPM
+        run: |
+          ./gradlew :composeApp:packageReleaseDeb :composeApp:packageReleaseRpm \
+            "-Pnuvio.desktop.packageName=${NUVIO_DEV_PACKAGE_NAME}" \
+            -Pcompose.desktop.packaging.checkJdkVendor=false \
+            --no-configuration-cache --no-daemon --stacktrace
+      - name: Collect artifacts
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          mkdir -p out
+          deb="$(find composeApp/build/compose/binaries/main-release/deb -maxdepth 1 -name '*.deb' | head -n1)"
+          rpm="$(find composeApp/build/compose/binaries/main-release/rpm -maxdepth 1 -name '*.rpm' | head -n1)"
+          cp "${deb}" "out/NuvioDev-${VERSION}-linux-x86_64.deb"
+          cp "${rpm}" "out/NuvioDev-${VERSION}-linux-x86_64.rpm"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-dev-linux-x64
+          path: out/*
+          if-no-files-found: error
+
+  android:
+    name: Android APK
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Configure local.properties
+        run: |
+          if [ -n "${LOCAL_PROPERTIES_BASE64}" ]; then
+            printf '%s' "${LOCAL_PROPERTIES_BASE64}" | base64 --decode > local.properties
+          else
+            touch local.properties
+          fi
+      - name: Build release APK
+        run: ./gradlew :composeApp:assembleFullRelease --no-configuration-cache --no-daemon --stacktrace
+      - name: Collect artifact
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          mkdir -p out
+          apk="$(find composeApp/build/outputs -name '*.apk' | grep -i release | head -n1)"
+          cp "${apk}" "out/NuvioDev-${VERSION}-android.apk"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-dev-android
+          path: out/*.apk
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: [metadata, windows, macos, linux, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.metadata.outputs.version }}
+      TAG: ${{ needs.metadata.outputs.tag }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Download all artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Assemble release notes
+        run: |
+          set -euo pipefail
+          {
+            echo "# NuvioDev ${VERSION}"
+            echo
+            echo "Side-by-side dev build of the Nuvio fork. **NuvioDev** installs alongside the official Nuvio app (separate app, shortcuts and menu entry)."
+            echo
+            echo "## Highlights"
+            echo
+            echo "- Fix: addon subtitles stay on the track you picked when you seek (no more switching to a preferred language)."
+            echo "- Next episode: continues from the provider you're already watching and prefetches the next episode's sources, so it no longer stalls on \"fetching sources\"."
+            echo "- Shortcuts: **S** cycles subtitles, **+ / - / [ / ]** adjust speed, **= / Shift+Z** reset speed, **Shift+←/→** fine seek, **Shift+↑/↓** volume, **T** stream info, **X** stop."
+            echo
+            echo "## Full changelog"
+            echo
+            prev_tag="$(git tag -l | grep -E '^[0-9]+(\.[0-9]+){0,2}$' | grep -v "^${VERSION}$" | sort -V | tail -n1 || true)"
+            if [ -n "${prev_tag}" ] && git rev-parse -q --verify "refs/tags/${prev_tag}" >/dev/null; then
+              git log --pretty='- %s (%h)' "${prev_tag}..HEAD"
+            else
+              git log --pretty='- %s (%h)' -n 80
+            fi
+            echo
+            echo "## Credits"
+            echo
+            echo "- Original author: Tapframe and friends (Nuvio)"
+            echo "- NuvioDev modder: Sanjivns"
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Create or update release
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" dist/* --clobber
+            gh release edit "${TAG}" --title "NuvioDev ${VERSION}" --notes-file release-notes.md
+          else
+            gh release create "${TAG}" dist/* \
+              --title "NuvioDev ${VERSION}" \
+              --notes-file release-notes.md \
+              --latest=false
+          fi
+
+      - name: Refresh rolling latest release
+        run: |
+          set -euo pipefail
+          if gh release view nuvio-dev-latest >/dev/null 2>&1; then
+            for asset in dist/*; do
+              gh release delete-asset nuvio-dev-latest "$(basename "${asset}")" --yes 2>/dev/null || true
+            done
+            gh release upload nuvio-dev-latest dist/* --clobber
+            gh release edit nuvio-dev-latest --title "NuvioDev ${VERSION}" --notes-file release-notes.md
+          else
+            gh release create nuvio-dev-latest dist/* \
+              --title "NuvioDev ${VERSION}" \
+              --notes-file release-notes.md \
+              --latest
+          fi
