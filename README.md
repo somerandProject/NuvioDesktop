@@ -1,39 +1,41 @@
-<div align="center">
+# NuvioDev (personal fork of Nuvio Desktop)
 
-  <img src="https://nuvio.tv/assets/nuvio-app-logo-wordmark.webp" alt="Nuvio" width="320" />
+> **This is a personal, unofficial fork of [Nuvio Desktop](https://github.com/NuvioMedia/NuvioDesktop).**
+> It is not affiliated with, endorsed by, or supported by the original authors.
+> All credit for the original app, design, and the vast majority of the code goes to
+> **Tapframe and the Nuvio contributors** — see [Credits](#credits) below.
 
-  <p>
-    A free, open-source media app for Windows, macOS, and Linux.
-    <br />
-    Bring your own sources. Nuvio turns them into a library with artwork, ratings, subtitles, and your place saved on every screen.
-  </p>
+`NuvioDev` is a side-by-side dev build of the Nuvio fork. It installs alongside the
+official Nuvio app as a separate app (`NuvioDev`), with its own shortcuts and menu
+entry, so installing or updating it will **not** touch your official Nuvio install.
 
-  [Website](https://nuvio.tv) · [GitHub releases](https://github.com/NuvioMedia/NuvioDesktop/releases/latest) · [Support Nuvio](https://nuvio.tv/support)
+## What's different in this fork
 
-</div>
+- In-app updates: a **Check for updates** button in `Settings → About`, plus a
+  seamless update banner that downloads and installs the newest `NuvioDev` MSI.
+- Builds are published only for **Windows x64** (MSI) from the `Dev` branch.
+- Assorted personal tweaks and fixes (e.g. subtitle track selection on seek,
+  skip intro/outro via introdb).
+- Uses the debug keystore for release signing when no release keystore is
+  configured, so fork builds are installable without your own keystore.
 
-## ⚠️ Alpha Software - Slow Development - Testers Only
+## Get NuvioDev
 
-Nuvio Desktop is currently in alpha and is intended only for testers. It is under development and is not suitable for daily use.
+Grab the latest build from the rolling release:
 
-Expect breaking changes with every update. Features, settings, stored data, and compatibility may change or stop working without notice. Do not rely on this build as your primary media app, and report any issues you encounter during testing.
+- [NuvioDev Latest (Windows x64 MSI)](https://github.com/somerandProject/NuvioDesktop/releases/tag/nuvio-dev-latest)
 
-## Get Nuvio Desktop
-
-Download the latest build from [GitHub Releases](https://github.com/NuvioMedia/NuvioDesktop/releases/latest).
-
-- Windows: MSI installer
-- macOS: DMG installer
-- Linux: DEB, RPM, Flatpak, or AppImage
+The in-app updater points at this rolling release, so you can update without
+leaving the app.
 
 ## Build from source
 
 ```bash
-git clone https://github.com/NuvioMedia/NuvioDesktop.git
+git clone https://github.com/somerandProject/NuvioDesktop.git
 cd NuvioDesktop
 ```
 
-### Run the app
+Run the app:
 
 ```bash
 ./gradlew :composeApp:run
@@ -45,32 +47,10 @@ On Windows PowerShell:
 .\gradlew.bat :composeApp:run
 ```
 
-### Package the app
-
-Build a release package for the current host:
-
-```bash
-./gradlew :composeApp:packageReleaseDistributionForCurrentOS
-```
-
-For platform-specific packaging:
-
-Windows PowerShell:
+Package the Windows MSI:
 
 ```powershell
 .\gradlew.bat :composeApp:packageReleaseMsi --rerun-tasks
-```
-
-macOS:
-
-```bash
-./scripts/build-macos-release-dmgs.sh --package-only
-```
-
-Linux:
-
-```bash
-./gradlew :composeApp:packageReleaseDeb
 ```
 
 The shared app is built with Kotlin Multiplatform and Compose Multiplatform.
@@ -78,3 +58,16 @@ The shared app is built with Kotlin Multiplatform and Compose Multiplatform.
 ## License
 
 [GNU General Public License v3.0](./LICENSE)
+
+Because this is a fork of a GPL-3.0 project, this fork remains under the same
+license, and the original copyright and license notices are preserved.
+
+## Credits
+
+- **Original app (Nuvio): Tapframe and friends / the Nuvio project** —
+  <https://github.com/NuvioMedia/NuvioDesktop> · <https://nuvio.tv>
+- All original contributors, translators, and upstream maintainers.
+- This personal fork and its modifications: maintained for personal use.
+
+If you are one of the original authors and would like this fork changed or taken
+down, please open an issue and it will be handled promptly.

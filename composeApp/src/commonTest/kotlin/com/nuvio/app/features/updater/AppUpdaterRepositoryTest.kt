@@ -2,7 +2,9 @@ package com.nuvio.app.features.updater
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class AppUpdaterRepositoryTest {
     @Test
@@ -74,6 +76,25 @@ class AppUpdaterRepositoryTest {
 
         assertEquals("desktop-preview", update?.tag)
         assertEquals("https://example.com/preview.dmg", update?.assetUrl)
+    }
+
+    @Test
+    fun rollingForkReleaseUsesTheVersionCarriedInItsName() {
+        val response = """[
+            {"tag_name": "nuvio-dev-latest", "name": "NuvioDev 0.1.42", "assets": [
+                {"name": "NuvioDev-Windows-x64-0.1.42.msi", "browser_download_url": "https://example.com/app.msi"}]}
+        ]"""
+
+        val update = AppUpdaterRepository.selectUpdate(
+            responseBody = response,
+            channel = UpdateChannel.ALL_RELEASES,
+            supportedAbis = emptyList(),
+            selector = AppUpdateAssetSelector(fileExtensions = listOf(".msi")),
+        )
+
+        assertEquals("NuvioDev 0.1.42", update?.tag)
+        assertTrue(VersionUtils.isRemoteNewerLegacy(update?.tag, "0.1.41"))
+        assertFalse(VersionUtils.isRemoteNewerLegacy(update?.tag, "0.1.42"))
     }
 
     @Test

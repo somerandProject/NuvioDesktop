@@ -59,4 +59,17 @@ class VersionUtilsTest {
         assertFalse(VersionUtils.isRemoteNewer("0.1", "0.1.9"))
         assertTrue(VersionUtils.isRemoteNewer("1.0.0", "0.9"))
     }
+
+    @Test
+    fun `fork release labels are parsed by their embedded version`() {
+        assertTrue(VersionUtils.isRemoteNewer("NuvioDev 0.2", "0.1"))
+        assertTrue(VersionUtils.isRemoteNewer("NuvioDev-v0.2", "0.1"))
+        assertTrue(VersionUtils.isRemoteNewer("nuvio-dev-0.2", "NuvioDev 0.1"))
+        assertFalse(VersionUtils.isRemoteNewer("NuvioDev 0.1", "0.1"))
+    }
+
+    @Test
+    fun `rolling release tag without a version is not offered`() {
+        assertFalse(VersionUtils.isRemoteNewer("nuvio-dev-latest", "0.1"))
+    }
 }

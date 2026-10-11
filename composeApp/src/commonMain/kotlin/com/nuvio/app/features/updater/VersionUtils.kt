@@ -52,9 +52,16 @@ internal object VersionUtils {
             "(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
     )
 
+    // Release labels may carry a human name ahead of the number, e.g.
+    // "NuvioDev 0.2", "NuvioDev-v0.2" or "nuvio-dev-0.2". Strip everything up to
+    // the first digit so fork/dev naming still yields a comparable version.
+    private val leadingLabelPattern = Regex("^.*?(?=\\d)")
+
     fun normalize(raw: String?): String {
         if (raw.isNullOrBlank()) return ""
-        return raw.trim().removePrefix("v").removePrefix("V")
+        return raw.trim()
+            .removePrefix("v").removePrefix("V")
+            .replace(leadingLabelPattern, "")
     }
 
     fun parse(raw: String?): SemanticVersion? {

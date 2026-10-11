@@ -129,7 +129,12 @@ internal object AppUpdaterRepository {
                 selector = selector,
             ) ?: return@firstNotNullOfOrNull null
             val tag = if (channel == UpdateChannel.ALL_RELEASES) {
-                release.tagName?.takeIf(String::isNotBlank)
+                // Prefer a parseable version so "newer" comparisons and the
+                // ignore-version key work. Rolling fork releases use a tag like
+                // "nuvio-dev-latest" and carry the version in the release name.
+                release.tagName?.takeIf { VersionUtils.parse(it) != null }
+                    ?: release.name?.takeIf { VersionUtils.parse(it) != null }
+                    ?: release.tagName?.takeIf(String::isNotBlank)
                     ?: release.name?.takeIf(String::isNotBlank)
                     ?: return@firstNotNullOfOrNull null
             } else {

@@ -37,6 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      rolling_version: ${{ steps.version.outputs.rolling_version }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Check out source
@@ -51,7 +52,12 @@ jobs:
             version="$(grep -E '^VERSION_NAME=' composeApp/Configuration/DesktopVersion.properties | cut -d= -f2 | tr -d '[:space:]')"
           fi
           [ -n "${version}" ] || { echo "Could not resolve version." >&2; exit 1; }
+          # A monotonic third component lets the in-app updater see each Dev
+          # build as newer than the previous one (the base version rarely moves).
+          base="${version%%-*}"
+          rolling_version="${base}.${{ github.run_number }}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "rolling_version=${rolling_version}" >> "$GITHUB_OUTPUT"
           echo "tag=${version}" >> "$GITHUB_OUTPUT"
 
   windows:
@@ -60,6 +66,7 @@ jobs:
     runs-on: windows-2022
     env:
       WEBVIEW2_VERSION: 1.0.4078.44
+      NUVIO_DESKTOP_VERSION_NAME: ${{ needs.metadata.outputs.rolling_version }}
     steps:
       - name: Check out source
         uses: actions/checkout@v6
@@ -101,7 +108,7 @@ jobs:
       - name: Collect artifact
         shell: bash
         env:
-          VERSION: ${{ needs.metadata.outputs.version }}
+          VERSION: ${{ needs.metadata.outputs.rolling_version }}
         run: |
           mkdir -p out
           cp "composeApp/build/compose/release-msis/NuvioDev-Windows-x64-${VERSION}.msi" "out/NuvioDev-${VERSION}-windows-x64.msi"
@@ -121,6 +128,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       VERSION: ${{ needs.metadata.outputs.version }}
+      ROLLING_VERSION: ${{ needs.metadata.outputs.rolling_version }}
       TAG: ${{ needs.metadata.outputs.tag }}
     steps:
       - name: Check out source
@@ -136,7 +144,9 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "# NuvioDev ${VERSION}"
+            echo "# NuvioDev ${ROLLING_VERSION}"
+            echo
+            echo "Personal, unofficial fork of Nuvio Desktop. All credit to Tapframe and the Nuvio contributors."
             echo
             echo "Side-by-side dev build of the Nuvio fork. **NuvioDev** installs alongside the official Nuvio app (separate app, shortcuts and menu entry)."
             echo
@@ -179,15 +189,17 @@ jobs:
       - name: Refresh rolling latest release
         run: |
           set -euo pipefail
+          # The rolling release title carries the monotonic version so the
+          # in-app updater treats every Dev build as newer than the last.
           if gh release view nuvio-dev-latest >/dev/null 2>&1; then
             for asset in dist/*; do
               gh release delete-asset nuvio-dev-latest "$(basename "${asset}")" --yes 2>/dev/null || true
             done
             gh release upload nuvio-dev-latest dist/* --clobber
-            gh release edit nuvio-dev-latest --title "NuvioDev ${VERSION}" --notes-file release-notes.md --latest
+            gh release edit nuvio-dev-latest --title "NuvioDev ${ROLLING_VERSION}" --notes-file release-notes.md --latest
           else
             gh release create nuvio-dev-latest dist/* \
-              --title "NuvioDev ${VERSION}" \
+              --title "NuvioDev ${ROLLING_VERSION}" \
               --notes-file release-notes.md \
               --latest
           fi
