@@ -22,6 +22,9 @@ internal const val P2pInitialDeliveryStageWeight = 0.30f
 internal const val P2pInitialPlayerStageStart = 0.75f
 internal const val P2pInitialLoadingMaximum = 0.95f
 internal const val NEXT_EPISODE_HARD_TIMEOUT_MS = 120_000L
+internal const val NEXT_EPISODE_DEBRID_TIMEOUT_MS = 45_000L
+// Fetch the next episode's sources this far before the end of the current one.
+internal const val NEXT_EPISODE_PRELOAD_LEAD_MS = 180_000L
 
 internal fun p2pInitialLoadingProgress(
     bufferedAheadMs: Long,

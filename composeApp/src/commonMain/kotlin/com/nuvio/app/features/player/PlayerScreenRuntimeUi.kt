@@ -1006,6 +1006,12 @@ private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: D
             playerControlsLog.d {
                 "selectBuiltInSubtitleTrack index=$index wasCustom=$wasCustom tracks=${subtitleTracks.size} ${playerControlLogContext()}"
             }
+            // Mark this as an explicit user choice so the preferred-subtitle
+            // auto-selection pass never overwrites it after a seek buffering
+            // cycle. Mirrors onBuiltInSubtitleTrackSelected for the desktop
+            // controls webview path.
+            isUserExplicitSubtitleSelection = true
+            preferredSubtitleSelectionApplied = true
             selectedSubtitleIndex = index
             selectedAddonSubtitleId = null
             useCustomSubtitles = false
@@ -1037,7 +1043,13 @@ private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: D
             playerControlsLog.d {
                 "selectAddonSubtitle index=${value.toInt()} addonId=${addon.id} language=${addon.language} ${playerControlLogContext()}"
             }
-            selectedAddonSubtitleId = addon.id
+            // Mark this as an explicit user choice so the preferred-subtitle
+            // auto-selection pass never swaps the addon subtitle the user picked
+            // when playback re-buffers after a seek. Mirrors
+            // onAddonSubtitleSelected for the desktop controls webview path.
+            isUserExplicitSubtitleSelection = true
+            preferredSubtitleSelectionApplied = true
+            selectedAddonSubtitleId = addon.selectionKey
             selectedSubtitleIndex = -1
             useCustomSubtitles = true
             persistAddonSubtitlePreference(addon)
@@ -1087,6 +1099,22 @@ private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: D
             PlayerSettingsRepository.setSubtitleStyle(subtitleStyle.copy(textColor = subtitleStyle.textColor.copy(alpha = alpha)))
         }
         "subtitleStyleReset" -> PlayerSettingsRepository.setSubtitleStyle(SubtitleStyleState.DEFAULT)
+        "streamInfo" -> {
+            if (showStreamInfo) showStreamInfo = false else openStreamInfo()
+        }
+        "stopPlayback" -> requestBack()
+        "seekByExact" -> {
+            val offset = value.toLong()
+            if (offset != 0L) {
+                val target = (playbackSnapshot.positionMs + offset).coerceAtLeast(0L)
+                playerController?.seekTo(target)
+                scheduleProgressSyncAfterSeek()
+            }
+        }
+        "adjustPlaybackSpeed" -> {
+            val next = (playbackSnapshot.playbackSpeed + value.toFloat()).coerceIn(0.25f, 4f)
+            playerController?.setPlaybackSpeed(next)
+        }
         "parentalGuideComplete" -> {
             showParentalGuide = false
         }

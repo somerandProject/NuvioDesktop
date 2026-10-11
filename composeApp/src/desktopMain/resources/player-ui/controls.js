@@ -3795,6 +3795,101 @@ document.addEventListener("keydown", event => {
     return;
   }
 
+  // --- VLC/Windows-style playback shortcuts -----------------------------
+  // Mirrors the user's mpv input.conf (increment/decrement speed, reset
+  // speed, exact seeks, shift+volume, and the info overlay) where the app has
+  // an equivalent feature. Commands with no app equivalent (chapters, playlist,
+  // audio-device, deinterlace, screenshot) are intentionally not bound.
+  //
+  // Speed shortcuts show an immediate toast and refresh the speed label once the
+  // native value has settled.
+  if (event.code === "NumpadAdd" || (event.code === "Equal" && event.shiftKey)) {
+    event.preventDefault();
+    showPlayerToast("+0.1x");
+    send("adjustPlaybackSpeed", 0.1);
+    queueSettingToast("speed");
+    return;
+  }
+  if (event.code === "Minus" && !event.shiftKey) {
+    event.preventDefault();
+    showPlayerToast("-0.1x");
+    send("adjustPlaybackSpeed", -0.1);
+    queueSettingToast("speed");
+    return;
+  }
+  if (event.code === "NumpadSubtract") {
+    event.preventDefault();
+    showPlayerToast("-0.1x");
+    send("adjustPlaybackSpeed", -0.1);
+    queueSettingToast("speed");
+    return;
+  }
+  if (event.code === "BracketRight") {
+    event.preventDefault();
+    showPlayerToast("+0.1x");
+    send("adjustPlaybackSpeed", 0.1);
+    queueSettingToast("speed");
+    return;
+  }
+  if (event.code === "BracketLeft") {
+    event.preventDefault();
+    showPlayerToast("-0.1x");
+    send("adjustPlaybackSpeed", -0.1);
+    queueSettingToast("speed");
+    return;
+  }
+  if ((event.code === "Equal" && !event.shiftKey) || (event.code === "KeyZ" && event.shiftKey)) {
+    event.preventDefault();
+    pendingSpeedIndex = speedOptions.findIndex(o => o.value === 1.0);
+    window.clearTimeout(pendingSpeedTimer);
+    pendingSpeedTimer = window.setTimeout(() => pendingSpeedIndex = null, 1000);
+    queueSettingToast("speed");
+    send("setPlaybackSpeed", 1.0);
+    return;
+  }
+  if (event.code === "KeyX" && !event.shiftKey) {
+    event.preventDefault();
+    send("stopPlayback", 0);
+    return;
+  }
+  if (event.code === "KeyT" && !event.shiftKey) {
+    event.preventDefault();
+    send("streamInfo", 0);
+    return;
+  }
+  if (event.shiftKey && event.code === "ArrowLeft") {
+    event.preventDefault();
+    send("seekByExact", -2000);
+    return;
+  }
+  if (event.shiftKey && event.code === "ArrowRight") {
+    event.preventDefault();
+    send("seekByExact", 2000);
+    return;
+  }
+  if (event.shiftKey && event.code === "ArrowUp") {
+    event.preventDefault();
+    const currentLevel = typeof state.volumeLevel === "number" && Number.isFinite(state.volumeLevel) ? state.volumeLevel : 1;
+    const nextLevel = Math.min(standardMaxVolumeLevel, clampVolumeLevel(currentLevel + 0.1));
+    state.volumeLevel = nextLevel;
+    if (nextLevel > 0) preMuteVolumeLevel = nextLevel;
+    syncVolumeControl();
+    showPlayerToast(volumeToastLabel(1), { icon: "icon-volume" });
+    send("volumeChange", nextLevel);
+    return;
+  }
+  if (event.shiftKey && event.code === "ArrowDown") {
+    event.preventDefault();
+    const currentLevel = typeof state.volumeLevel === "number" && Number.isFinite(state.volumeLevel) ? state.volumeLevel : 1;
+    const nextLevel = clampVolumeLevel(currentLevel - 0.1);
+    state.volumeLevel = nextLevel;
+    if (nextLevel > 0) preMuteVolumeLevel = nextLevel;
+    syncVolumeControl();
+    showPlayerToast(volumeToastLabel(-1), { icon: nextLevel > 0 ? "icon-volume" : "icon-volume-muted" });
+    send("volumeChange", nextLevel);
+    return;
+  }
+
   if (event.code === "Enter" && state.skipPromptVisible) {
     const activeEl = document.activeElement;
     if (!activeEl || activeEl.tagName === "BODY" || activeEl === root) {

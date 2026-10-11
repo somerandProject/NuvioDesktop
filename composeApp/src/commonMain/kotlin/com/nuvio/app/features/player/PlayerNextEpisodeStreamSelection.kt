@@ -12,6 +12,7 @@ internal sealed interface NextEpisodeStreamSelectionDecision {
 internal class NextEpisodeStreamSelectionCoordinator(
     private val selectAfterDelay: (List<StreamItem>) -> StreamItem?,
     private val selectPreferred: (List<StreamItem>) -> StreamItem?,
+    private val selectFromProvider: (List<StreamItem>) -> StreamItem? = { null },
 ) {
     private var selectionDelayElapsed = false
 
@@ -26,9 +27,13 @@ internal class NextEpisodeStreamSelectionCoordinator(
         val streams = state.groups.flatMap { it.streams }
         val isLoading = state.isAnyLoading || state.groups.any { it.isLoading }
         val selected = if (selectionDelayElapsed || !isLoading) {
-            selectAfterDelay(streams)
+            // Same provider as the episode that is ending wins over generic rules,
+            // so the next episode starts from the source already in use.
+            selectFromProvider(streams)
+                ?: selectAfterDelay(streams)
+                ?: selectPreferred(streams)
         } else {
-            selectPreferred(streams)
+            selectPreferred(streams) ?: selectFromProvider(streams)
         }
         return when {
             selected != null -> NextEpisodeStreamSelectionDecision.Selected(selected)

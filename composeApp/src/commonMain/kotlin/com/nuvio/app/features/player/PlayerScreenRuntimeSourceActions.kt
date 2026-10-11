@@ -450,6 +450,11 @@ internal fun PlayerScreenRuntime.playNextEpisode(automatic: Boolean = false) {
     if (!isCurrentRequest()) return
     nextEpisodeAutoPlayAutomatic = automatic
 
+    // Start fetching the next episode's sources right away (reusing the preload
+    // if it already ran) so the handoff does not show "fetching sources" and the
+    // cache is warm by the time the countdown completes.
+    preloadNextEpisodeSources()
+
     scope.launchPlayerNextEpisodeAutoPlay(
         previousJob = nextEpisodeAutoPlayJob,
         nextEpisodeInfo = nextEpisodeInfo,
@@ -459,6 +464,8 @@ internal fun PlayerScreenRuntime.playNextEpisode(automatic: Boolean = false) {
         contentType = contentType,
         settings = playerSettingsUiState,
         currentStreamBingeGroup = currentStreamBingeGroup,
+        preferredProviderAddonId = activeProviderAddonId,
+        preferredProviderName = activeProviderName,
         onDownloadedEpisodeSelected = { item, episode ->
             if (isCurrentRequest()) switchToDownloadedEpisode(item, episode)
         },

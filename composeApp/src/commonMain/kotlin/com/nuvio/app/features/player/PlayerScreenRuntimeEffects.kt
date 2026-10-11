@@ -89,6 +89,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         playbackSnapshot = PlayerPlaybackSnapshot()
         playbackSnapshotKey = null
         cancelNextEpisodeAutoPlay()
+        cancelNextEpisodePreload()
         isScrubbingTimeline = false
         scrubbingPositionMs = null
         liveGestureFeedback = null
@@ -288,6 +289,9 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
     LaunchedEffect(playbackSnapshot.isLoading, playerController, preferredAudioLanguageTargets) {
         if (!playbackSnapshot.isLoading && playerController != null) {
             refreshTracks()
+            // Warm the next episode's sources once the current one is playing so
+            // the handoff at the end never shows "fetching sources".
+            maybePreloadNextEpisodeSources()
         }
     }
 

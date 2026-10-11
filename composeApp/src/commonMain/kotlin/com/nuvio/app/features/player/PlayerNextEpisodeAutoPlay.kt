@@ -18,6 +18,7 @@ import com.nuvio.app.features.streams.StreamAutoPlaySource
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.watching.domain.isShortPlaceholderDuration
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -32,7 +33,12 @@ internal fun PlayerScreenRuntime.isAtNextEpisodeThreshold(): Boolean {
     ) return false
     // Preload: trigger source fetch before the button appears
     if (playerSettingsUiState.preloadNextEpisodeSources && !nextEpisodePreloadTriggered && nextEpisodeInfo != null) {
-        val preloadLeadMs = playerSettingsUiState.streamAutoPlayTimeoutSeconds.toLong() * 1_000L
+        // Start fetching the next episode well before the credits so the source
+        // list is warm when the handoff happens (never shown as "fetching").
+        val preloadLeadMs = maxOf(
+            playerSettingsUiState.streamAutoPlayTimeoutSeconds.toLong() * 1_000L,
+            NEXT_EPISODE_PRELOAD_LEAD_MS,
+        )
         val shouldPreload = PlayerNextEpisodeRules.shouldShowNextEpisodeCard(
             positionMs = playbackSnapshot.positionMs + preloadLeadMs,
             durationMs = playbackSnapshot.durationMs,
@@ -73,6 +79,8 @@ internal fun CoroutineScope.launchPlayerNextEpisodeAutoPlay(
     contentType: String?,
     settings: PlayerSettingsUiState,
     currentStreamBingeGroup: String?,
+    preferredProviderAddonId: String?,
+    preferredProviderName: String?,
     onDownloadedEpisodeSelected: (DownloadItem, MetaVideo) -> Unit,
     onEpisodeStreamSelected: (StreamItem, MetaVideo) -> Unit,
     onManualSelectionRequired: (MetaVideo) -> Unit,
@@ -102,11 +110,23 @@ internal fun CoroutineScope.launchPlayerNextEpisodeAutoPlay(
     onCountdownChanged(null)
 
     val type = contentType ?: parentMetaType
+    // Prefer continuing on the provider that is already playing this episode so
+    // the next episode starts on the same addon/plugin instead of showing the
+    // full source list again.
+    val sameProviderRequested = settings.streamAutoPlayPreferBingeGroup
+    val providerAddonId = preferredProviderAddonId?.takeIf { it.isNotBlank() }
+    val providerName = preferredProviderName?.takeIf { it.isNotBlank() }
+    val hasProviderPreference = sameProviderRequested &&
+        (
+            providerAddonId != null ||
+                providerName?.let { name -> AddonRepository.uiState.value.addons.enabledAddons().any { it.displayTitle == name } } == true
+            )
     val shouldAutoSelectInManualMode =
         settings.streamAutoPlayMode == StreamAutoPlayMode.MANUAL &&
             (
                 settings.streamAutoPlayNextEpisodeEnabled ||
-                    settings.streamAutoPlayPreferBingeGroup
+                    settings.streamAutoPlayPreferBingeGroup ||
+                    hasProviderPreference
                 )
 
     val bingeGroupOnlyManualMode =
@@ -223,9 +243,25 @@ internal fun CoroutineScope.launchPlayerNextEpisodeAutoPlay(
             )
         }
 
+        // Continue from the same provider when possible (matched by the addon
+        // id, then by display name as a fallback for plugins).
+        fun trySelectFromProvider(streams: List<StreamItem>): StreamItem? {
+            if (!hasProviderPreference) return null
+            val matchesProvider = { stream: StreamItem ->
+                stream.serverTarget == null && (
+                    (providerAddonId != null && stream.addonId == providerAddonId) ||
+                        (providerName != null && stream.addonName == providerName)
+                    )
+            }
+            val providerStreams = streams.filter(matchesProvider)
+            if (providerStreams.isEmpty()) return null
+            return providerStreams.firstOrNull { it.playableDirectUrl != null } ?: providerStreams.first()
+        }
+
         val selectionCoordinator = NextEpisodeStreamSelectionCoordinator(
             selectAfterDelay = ::trySelectStream,
             selectPreferred = ::tryBingeGroupOnly,
+            selectFromProvider = ::trySelectFromProvider,
         )
 
         fun applySelectionDecision(decision: NextEpisodeStreamSelectionDecision) {
@@ -243,61 +279,125 @@ internal fun CoroutineScope.launchPlayerNextEpisodeAutoPlay(
             }
         }
 
-        val timeoutMs = timeoutSeconds * 1_000L
-        val isBoundedTimeout = timeoutSeconds in 1..30
+        try {
+            val timeoutMs = timeoutSeconds * 1_000L
+            val isBoundedTimeout = timeoutSeconds in 1..30
 
-        if (isBoundedTimeout) {
-            withTimeoutOrNull(timeoutMs) { autoSelectSettled.await() }
-        }
-        applySelectionDecision(
-            selectionCoordinator.onSelectionDelayElapsed(PlayerStreamsRepository.episodeStreamsState.value),
-        )
-        val completed = withTimeoutOrNull(NEXT_EPISODE_HARD_TIMEOUT_MS) { autoSelectSettled.await() }
-        innerJob.cancel()
-        if (completed == null && !autoSelectTriggered) {
-            val allStreams = PlayerStreamsRepository.episodeStreamsState.value.groups.flatMap { it.streams }
-            trySelectStream(allStreams)?.let(::selectStream) ?: finishWithoutSelection()
-        }
+            if (isBoundedTimeout) {
+                // The configured delay is a maximum wait for the provider-preferred
+                // (binge group / same-provider) match, not a hard stop: if nothing
+                // was found we keep waiting for the full stream timeout below.
+                withTimeoutOrNull(timeoutMs) { autoSelectSettled.await() }
+            }
+            applySelectionDecision(
+                selectionCoordinator.onSelectionDelayElapsed(PlayerStreamsRepository.episodeStreamsState.value),
+            )
+            val completed = withTimeoutOrNull(NEXT_EPISODE_HARD_TIMEOUT_MS) { autoSelectSettled.await() }
+            innerJob.cancel()
+            if (completed == null && !autoSelectTriggered) {
+                val allStreams = PlayerStreamsRepository.episodeStreamsState.value.groups.flatMap { it.streams }
+                trySelectFromProvider(allStreams)
+                    ?: trySelectStream(allStreams)
+                    ?: finishWithoutSelection()
+            }
 
-        val selected = selectedStream?.let { stream ->
-            when (val result = DirectDebridPlaybackResolver.resolveToPlayableStream(stream, nextVideo.season, nextVideo.episode)) {
-                is DirectDebridPlayableResult.Success -> result.stream
-                else -> {
-                    result.toastMessage()?.let { NuvioToastController.show(it) }
-                    PlayerStreamsRepository.loadEpisodeStreams(
-                        type = type,
-                        videoId = nextVideo.id,
-                        season = nextVideo.season,
-                        episode = nextVideo.episode,
-                        forceRefresh = true,
-                    )
-                    null
-                }
+            val selected = selectedStream
+            if (selected != null) {
+                // Clear the searching indicator before the countdown so the card
+                // shows the resolved source name while counting down.
+                onSearchingChanged(false)
+                finishNextEpisodeAutoPlay(
+                    stream = selected,
+                    nextVideo = nextVideo,
+                    type = type,
+                    onEpisodeStreamSelected = onEpisodeStreamSelected,
+                    onSourceNameChanged = onSourceNameChanged,
+                    onCountdownChanged = onCountdownChanged,
+                    onNextEpisodeCardVisibleChanged = onNextEpisodeCardVisibleChanged,
+                    onManualSelectionRequired = onManualSelectionRequired,
+                )
+            } else {
+                onNextEpisodeCardVisibleChanged(false)
+                onManualSelectionRequired(nextVideo)
             }
-        }
-        onSearchingChanged(false)
-        if (selected != null) {
-            onSourceNameChanged((selected.name?.takeIf { it.isNotBlank() } ?: selected.addonName).trim())
-            for (i in 3 downTo 1) {
-                onCountdownChanged(i)
-                delay(1000)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Throwable) {
+            // Never leave the player stuck on "fetching sources" if source
+            // resolution fails unexpectedly.
+            failure.message?.takeIf { it.isNotBlank() }?.let { message ->
+                NuvioToastController.show(message)
             }
-            onEpisodeStreamSelected(selected, nextVideo)
-            onNextEpisodeCardVisibleChanged(false)
-            onCountdownChanged(null)
-            onSourceNameChanged(null)
-        } else {
-            onManualSelectionRequired(nextVideo)
-            onNextEpisodeCardVisibleChanged(false)
+        } finally {
+            innerJob.cancel()
+            // Guarantees the "fetching sources" indicator is cleared on every exit
+            // path, including cancellation or an unexpected failure, so the player
+            // can never get stuck on the loading state.
+            onSearchingChanged(false)
         }
     }
+}
+
+private suspend fun finishNextEpisodeAutoPlay(
+    stream: StreamItem,
+    nextVideo: MetaVideo,
+    type: String,
+    onEpisodeStreamSelected: (StreamItem, MetaVideo) -> Unit,
+    onSourceNameChanged: (String?) -> Unit,
+    onCountdownChanged: (Int?) -> Unit,
+    onNextEpisodeCardVisibleChanged: (Boolean) -> Unit,
+    onManualSelectionRequired: (MetaVideo) -> Unit,
+) {
+    val resolved = runCatching {
+        withTimeoutOrNull(NEXT_EPISODE_DEBRID_TIMEOUT_MS) {
+            DirectDebridPlaybackResolver.resolveToPlayableStream(stream, nextVideo.season, nextVideo.episode)
+        }
+    }.getOrNull()
+    when (resolved) {
+        is DirectDebridPlayableResult.Success -> Unit
+        null, DirectDebridPlayableResult.Stale -> {
+            PlayerStreamsRepository.loadEpisodeStreams(
+                type = type,
+                videoId = nextVideo.id,
+                season = nextVideo.season,
+                episode = nextVideo.episode,
+                forceRefresh = true,
+            )
+        }
+        else -> resolved?.toastMessage()?.let { NuvioToastController.show(it) }
+    }
+    val playable = (resolved as? DirectDebridPlayableResult.Success)?.stream
+    if (playable != null) {
+        onSourceNameChanged((playable.name?.takeIf { it.isNotBlank() } ?: playable.addonName).trim())
+        for (i in 3 downTo 1) {
+            onCountdownChanged(i)
+            delay(1000)
+        }
+        onEpisodeStreamSelected(playable, nextVideo)
+        onNextEpisodeCardVisibleChanged(false)
+        onCountdownChanged(null)
+        onSourceNameChanged(null)
+    } else {
+        onManualSelectionRequired(nextVideo)
+        onNextEpisodeCardVisibleChanged(false)
+    }
+}
+
+// Starts fetching the next episode's sources as soon as the runtime is ready,
+// independent of the end-of-episode threshold, so the handoff does not wait on
+// a cold source list.
+internal fun PlayerScreenRuntime.maybePreloadNextEpisodeSources() {
+    if (!playerSettingsUiState.preloadNextEpisodeSources) return
+    if (nextEpisodePreloadTriggered) return
+    if (nextEpisodeInfo == null) return
+    preloadNextEpisodeSources()
 }
 
 internal fun PlayerScreenRuntime.preloadNextEpisodeSources() {
     if (nextEpisodePreloadTriggered) return
     val nextEp = nextEpisodeInfo ?: return
     if (nextEp.hasAired != true) return
-    val type = contentType ?: return
+    val type = contentType ?: parentMetaType
 
     nextEpisodePreloadTriggered = true
     nextEpisodePreloadJob?.cancel()
