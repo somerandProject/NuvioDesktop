@@ -1,10 +1,10 @@
 name: Build Desktop (Dev)
 
-# Auto-builds the Windows installer on every push to Dev so the latest changes
-# can be installed without manually dispatching the full release workflow.
-# Backend secrets are optional: if NUVIO_DESKTOP_LOCAL_PROPERTIES_BASE64 is not
-# configured the build still produces an installable MSI (with online features
-# disabled) so player fixes can be tested.
+# Auto-builds a side-by-side "NuvioDev" Windows installer on every push to Dev.
+# It uses a distinct package name and MSI upgrade UUID so it installs next to the
+# official Nuvio app instead of colliding with it. Backend secrets are optional:
+# if NUVIO_DESKTOP_LOCAL_PROPERTIES_BASE64 is not configured the build still
+# produces an installable MSI (with online features disabled).
 
 on:
   push:
@@ -21,11 +21,14 @@ concurrency:
 
 jobs:
   windows:
-    name: Windows x64 MSI
+    name: Windows x64 MSI (NuvioDev)
     runs-on: windows-2022
     env:
       WEBVIEW2_VERSION: 1.0.4078.44
       LOCAL_PROPERTIES_BASE64: ${{ secrets.NUVIO_DESKTOP_LOCAL_PROPERTIES_BASE64 }}
+      NUVIO_DEV_PACKAGE_NAME: NuvioDev
+      # A UUID distinct from the official app's upgrade UUID so the two can be installed side by side.
+      NUVIO_DEV_UPGRADE_UUID: 7a2f1c94-2d63-4b6e-9c1d-4f8b7a0e2d31
 
     steps:
       - name: Check out source
@@ -95,15 +98,26 @@ jobs:
           & .\gradlew.bat `
             :composeApp:packageReleaseMsi `
             "-Pnuvio.webview2.dir=$env:WEBVIEW2_ROOT" `
+            "-Pnuvio.desktop.packageName=$env:NUVIO_DEV_PACKAGE_NAME" `
+            "-Pnuvio.desktop.upgradeUuid=$env:NUVIO_DEV_UPGRADE_UUID" `
             "-Pcompose.desktop.packaging.checkJdkVendor=false" `
             --no-configuration-cache `
             --no-daemon `
             --stacktrace
 
+      - name: Verify MSI
+        shell: pwsh
+        run: |
+          $expected = "composeApp\build\compose\release-msis\$env:NUVIO_DEV_PACKAGE_NAME-Windows-x64-$env:RELEASE_VERSION.msi"
+          if (-not (Test-Path $expected)) {
+            throw "Expected MSI was not produced: $expected"
+          }
+          Get-Item $expected | Format-List Name, Length, LastWriteTime
+
       - name: Upload MSI
         uses: actions/upload-artifact@v7
         with:
-          name: nuvio-desktop-dev-windows-x64
+          name: nuvio-dev-windows-x64
           path: composeApp/build/compose/release-msis/*.msi
           if-no-files-found: error
           retention-days: 14
