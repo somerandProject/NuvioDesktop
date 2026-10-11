@@ -52,10 +52,16 @@ jobs:
             version="$(grep -E '^VERSION_NAME=' composeApp/Configuration/DesktopVersion.properties | cut -d= -f2 | tr -d '[:space:]')"
           fi
           [ -n "${version}" ] || { echo "Could not resolve version." >&2; exit 1; }
-          # A monotonic third component lets the in-app updater see each Dev
-          # build as newer than the previous one (the base version rarely moves).
-          base="${version%%-*}"
-          rolling_version="${base}.${{ github.run_number }}"
+          # Append a monotonic run number so the in-app updater sees each Dev
+          # build as newer than the last. Keep any prerelease suffix
+          # (e.g. "0.2-alpha" -> "0.2-alpha.<run>").
+          if [[ "${version}" == *-* ]]; then
+            core="${version%%-*}"
+            suffix="${version#*-}"
+            rolling_version="${core}-${suffix}.${{ github.run_number }}"
+          else
+            rolling_version="${version}.${{ github.run_number }}"
+          fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "rolling_version=${rolling_version}" >> "$GITHUB_OUTPUT"
           echo "tag=${version}" >> "$GITHUB_OUTPUT"
@@ -111,7 +117,15 @@ jobs:
           VERSION: ${{ needs.metadata.outputs.rolling_version }}
         run: |
           mkdir -p out
-          cp "composeApp/build/compose/release-msis/NuvioDev-Windows-x64-${VERSION}.msi" "out/NuvioDev-${VERSION}-windows-x64.msi"
+          # jpackage rewrites the version to a numeric x.y.z, so locate the
+          # produced MSI by glob instead of predicting the filename.
+          msi="$(find composeApp/build/compose/release-msis -maxdepth 1 -name '*.msi' | head -n1)"
+          if [ -z "${msi}" ]; then
+            echo "No MSI produced." >&2
+            find composeApp/build/compose -name '*.msi' >&2 || true
+            exit 1
+          fi
+          cp "${msi}" "out/NuvioDev-${VERSION}-windows-x64.msi"
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
@@ -152,9 +166,11 @@ jobs:
             echo
             echo "## Highlights"
             echo
-            echo "- Fix: addon subtitles stay on the track you picked when you seek (no more switching to a preferred language)."
-            echo "- Next episode: continues from the provider you're already watching and prefetches the next episode's sources, so it no longer stalls on \"fetching sources\"."
-            echo "- Shortcuts: **S** cycles subtitles, **+ / - / [ / ]** adjust speed, **= / Shift+Z** reset speed, **Shift+←/→** fine seek, **Shift+↑/↓** volume, **T** stream info, **X** stop."
+            echo "- In-app updates: **Settings → About → Check for updates**, plus a seamless update banner."
+            echo "- Desktop: remembers window size/position, **always-on-top** toggle, and **minimize to tray**."
+            echo "- Player: **A-B loop**, frame step, subtitle delay nudge, and more keyboard shortcuts."
+            echo "- Skip intro/outro/recap now works out of the box (introdb default endpoint)."
+            echo "- Diagnostics: **View logs** page and a crash-reporting opt-out toggle."
             echo
             echo "## Full changelog"
             echo
@@ -173,16 +189,19 @@ jobs:
           cat release-notes.md
 
       - name: Create or update versioned release
-        if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -euo pipefail
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" dist/* --clobber
-            gh release edit "${TAG}" --title "NuvioDev ${VERSION}" --notes-file release-notes.md
+          # A versioned (prerelease) release per Dev build gives history and
+          # rollback; the rolling release below always points at the newest.
+          if gh release view "${ROLLING_VERSION}" >/dev/null 2>&1; then
+            gh release upload "${ROLLING_VERSION}" dist/* --clobber
+            gh release edit "${ROLLING_VERSION}" \
+              --title "NuvioDev ${ROLLING_VERSION}" --notes-file release-notes.md
           else
-            gh release create "${TAG}" dist/* \
-              --title "NuvioDev ${VERSION}" \
+            gh release create "${ROLLING_VERSION}" dist/* \
+              --title "NuvioDev ${ROLLING_VERSION}" \
               --notes-file release-notes.md \
+              --prerelease \
               --latest=false
           fi
 

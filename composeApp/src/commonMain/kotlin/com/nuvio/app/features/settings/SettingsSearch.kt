@@ -440,6 +440,38 @@ internal fun settingsSearchEntries(
             icon = Icons.Rounded.Tune,
         )
     }
+    if (DesktopWindowSettings.isSupported) {
+        addRow(
+            page = SettingsPage.Advanced,
+            key = "window-always-on-top",
+            title = stringResource(Res.string.settings_window_always_on_top),
+            description = stringResource(Res.string.settings_window_always_on_top_description),
+            pageLabel = advancedPage,
+            section = stringResource(Res.string.settings_advanced_section_window),
+            category = advancedCategory,
+            icon = Icons.Rounded.Tune,
+        )
+        addRow(
+            page = SettingsPage.Advanced,
+            key = "window-minimize-to-tray",
+            title = stringResource(Res.string.settings_window_minimize_to_tray),
+            description = stringResource(Res.string.settings_window_minimize_to_tray_description),
+            pageLabel = advancedPage,
+            section = stringResource(Res.string.settings_advanced_section_window),
+            category = advancedCategory,
+            icon = Icons.Rounded.Tune,
+        )
+        addRow(
+            page = SettingsPage.Advanced,
+            key = "window-logs",
+            title = stringResource(Res.string.settings_window_logs),
+            description = stringResource(Res.string.settings_window_logs_description),
+            pageLabel = advancedPage,
+            section = stringResource(Res.string.settings_advanced_section_window),
+            category = advancedCategory,
+            icon = Icons.Rounded.Tune,
+        )
+    }
     addRow(
         page = SettingsPage.Advanced,
         key = "clear-cw-cache",

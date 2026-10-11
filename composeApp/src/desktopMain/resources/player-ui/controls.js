@@ -401,6 +401,10 @@ let skipPromptAutoHidden = false;
 let skipPromptAutoHideTimer = 0;
 let skipPromptAutoHideActive = false;
 let skipPromptLiftTimer = 0;
+let abLoopStartMs = null;
+let abLoopEndMs = null;
+let abLoopSeekPending = false;
+const FRAME_STEP_MS = 42;
 let pauseMetadataReady = false;
 let pauseMetadataTimer = 0;
 let pauseMetadataEligibilityKey = "";
@@ -2413,10 +2417,54 @@ const finishChromePointerInteraction = event => {
   noteChromeActivity(true);
 };
 
+const enforceAbLoop = (positionMs, isPlaying) => {
+  if (abLoopStartMs === null || abLoopEndMs === null) {
+    abLoopSeekPending = false;
+    return;
+  }
+  if (!isPlaying || abLoopSeekPending) return;
+  if (positionMs >= abLoopEndMs || positionMs < abLoopStartMs - 500) {
+    abLoopSeekPending = true;
+    send("scrubFinish", abLoopStartMs);
+    window.setTimeout(() => { abLoopSeekPending = false; }, 400);
+  }
+};
+
+const setAbLoopPoint = () => {
+  const positionMs = Math.max(0, Number(state.positionMs) || 0);
+  if (abLoopStartMs === null || abLoopEndMs !== null) {
+    abLoopStartMs = positionMs;
+    abLoopEndMs = null;
+    showPlayerToast(`A ${formatTime(positionMs)}`);
+    return;
+  }
+  if (positionMs <= abLoopStartMs) {
+    abLoopStartMs = positionMs;
+    showPlayerToast(`A ${formatTime(positionMs)}`);
+    return;
+  }
+  abLoopEndMs = positionMs;
+  showPlayerToast(`A-B ${formatTime(abLoopStartMs)} – ${formatTime(positionMs)}`);
+};
+
+const clearAbLoop = () => {
+  if (abLoopStartMs === null && abLoopEndMs === null) return;
+  abLoopStartMs = null;
+  abLoopEndMs = null;
+  showPlayerToast("A-B cleared");
+};
+
+const stepFrames = direction => {
+  const positionMs = Math.max(0, Number(state.positionMs) || 0);
+  const target = Math.max(0, positionMs + direction * FRAME_STEP_MS);
+  send("scrubFinish", target);
+};
+
 const renderChrome = () => {
   const durationMs = Math.max(0, Number(state.durationMs) || 0);
   const positionMs = isScrubbing ? scrubPositionMs : Math.max(0, Number(state.positionMs) || 0);
   const isPlaying = Boolean(state.isPlaying);
+  enforceAbLoop(positionMs, isPlaying);
   const showError = renderPlaybackError();
   root.classList.toggle("pip-mode", Boolean(state.isInPip));
   if (!state.isInPip && isPipLocked) setPipLocked(false);
@@ -3934,8 +3982,7 @@ document.addEventListener("keydown", event => {
       send("selectAudioTrack", trackIdValue(state.audioTracks[nextIndex]));
     }
     return;
-  }
-  if (event.code === "KeyV") {
+  }  if (event.code === "KeyV") {
     event.preventDefault();
     const isOff = !normalizeTracks(state.subtitleTracks).some(t => t.selected);
     if (isOff) {
@@ -4043,6 +4090,26 @@ document.addEventListener("keydown", event => {
     pendingSpeedTimer = window.setTimeout(() => pendingSpeedIndex = null, 1000);
     queueSettingToast("speed");
     send("setPlaybackSpeed", 1.0);
+    return;
+  }
+  if (event.code === "Comma" && !event.shiftKey) {
+    event.preventDefault();
+    stepFrames(-1);
+    return;
+  }
+  if (event.code === "Period" && !event.shiftKey) {
+    event.preventDefault();
+    stepFrames(1);
+    return;
+  }
+  if (event.shiftKey && event.code === "KeyA") {
+    event.preventDefault();
+    setAbLoopPoint();
+    return;
+  }
+  if (event.shiftKey && event.code === "KeyC") {
+    event.preventDefault();
+    clearAbLoop();
     return;
   }
 

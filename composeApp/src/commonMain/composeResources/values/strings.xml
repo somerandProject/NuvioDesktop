@@ -561,6 +561,16 @@
     <string name="settings_search_placeholder">Search settings...</string>
     <string name="settings_search_results_section">RESULTS</string>
     <string name="settings_advanced_section_startup">STARTUP</string>
+    <string name="settings_advanced_section_window">WINDOW</string>
+    <string name="settings_window_always_on_top">Always on top</string>
+    <string name="settings_window_always_on_top_description">Keep the Nuvio window above all other windows.</string>
+    <string name="settings_window_minimize_to_tray">Minimize to tray</string>
+    <string name="settings_window_minimize_to_tray_description">Hiding or minimizing the window keeps Nuvio running in the system tray.</string>
+    <string name="settings_window_minimize_to_tray_description_unsupported">The system tray is not available on this desktop.</string>
+    <string name="settings_window_logs">Logs</string>
+    <string name="settings_window_logs_description">View recent app logs for troubleshooting.</string>
+    <string name="settings_window_view_logs">Open log folder</string>
+    <string name="settings_window_clear_logs">Clear logs</string>
     <string name="settings_advanced_section_windows_graphics">WINDOWS GRAPHICS</string>
     <string name="settings_advanced_section_diagnostics">DIAGNOSTICS</string>
     <string name="settings_advanced_section_discord">DISCORD</string>
@@ -1804,6 +1814,8 @@
     <string name="updates_release_notes">Release notes</string>
     <string name="updates_title_allow_installs">Allow installs to continue</string>
     <string name="updates_title_available">Update available</string>
+    <string name="updates_whats_new_title">What&apos;s new</string>
+    <string name="updates_whats_new_body">NuvioDev was updated to %1$s. Open Settings \u2192 About \u2192 Check for updates any time to look for newer builds.</string>
     <string name="updates_title_status">Update status</string>
     <string name="addon_already_installed">That addon is already installed.</string>
     <string name="addon_invalid_url">Enter a valid addon URL</string>

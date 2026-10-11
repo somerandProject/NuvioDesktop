@@ -33,6 +33,12 @@ actual object AppUpdaterPlatform {
         AndroidAppUpdaterPlatform.setIgnoredTag(tag)
     }
 
+    actual fun getLastSeenVersion(): String? = AndroidAppUpdaterPlatform.getLastSeenVersion()
+
+    actual fun setLastSeenVersion(version: String) {
+        AndroidAppUpdaterPlatform.setLastSeenVersion(version)
+    }
+
     actual fun getUpdateChannel(): String? = AndroidAppUpdaterPlatform.getUpdateChannel()
 
     actual fun setUpdateChannel(channel: String) {

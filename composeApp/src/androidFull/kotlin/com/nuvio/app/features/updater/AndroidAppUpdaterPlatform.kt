@@ -27,6 +27,7 @@ object AndroidAppUpdaterPlatform {
     private const val preferencesName = "nuvio_updater"
     private const val ignoredTagKey = "ignored_release_tag"
     private const val updateChannelKey = "update_channel"
+    private const val lastSeenVersionKey = "last_seen_version"
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
@@ -60,6 +61,11 @@ object AndroidAppUpdaterPlatform {
 
     fun getUpdateChannel(): String? = preferences().getString(updateChannelKey, null)
 
+    fun getLastSeenVersion(): String? = preferences().getString(lastSeenVersionKey, null)
+
+    fun setLastSeenVersion(version: String) {
+        preferences().edit().putString(lastSeenVersionKey, version).apply()
+    }
     fun setUpdateChannel(channel: String) {
         preferences().edit().putString(updateChannelKey, channel).apply()
     }

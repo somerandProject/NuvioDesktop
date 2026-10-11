@@ -32,6 +32,10 @@ expect object AppUpdaterPlatform {
 
     fun setIgnoredTag(tag: String?)
 
+    fun getLastSeenVersion(): String?
+
+    fun setLastSeenVersion(version: String)
+
     fun getUpdateChannel(): String?
 
     fun setUpdateChannel(channel: String)

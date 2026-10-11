@@ -84,6 +84,11 @@ internal fun LazyListScope.advancedSettingsContent(
             }
         }
     }
+    if (DesktopWindowSettings.isSupported) {
+        item {
+            DesktopWindowSettingsSection(isTablet = isTablet)
+        }
+    }
     if (DesktopRendererSettings.isSupported) {
         item {
             val externallyControlled = remember { DesktopRendererSettings.isExternallyControlled }

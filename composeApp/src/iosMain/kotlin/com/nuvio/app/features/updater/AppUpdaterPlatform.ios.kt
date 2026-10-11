@@ -30,6 +30,10 @@ actual object AppUpdaterPlatform {
 
     actual fun setIgnoredTag(tag: String?) = Unit
 
+    actual fun getLastSeenVersion(): String? = null
+
+    actual fun setLastSeenVersion(version: String) = Unit
+
     actual suspend fun downloadUpdateAsset(
         assetUrl: String,
         assetName: String,

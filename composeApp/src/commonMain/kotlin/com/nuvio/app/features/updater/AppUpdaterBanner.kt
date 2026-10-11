@@ -90,9 +90,18 @@ fun AppUpdaterHost(
 
     val state by controller.uiState.collectAsStateWithLifecycle()
     var showReleaseNotes by rememberSaveable { mutableStateOf(false) }
+    var whatsNewVersion by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(controller) {
         controller.ensureAutoCheckStarted()
+        // "What's new" once per version: when the running build differs from the
+        // last one the user has seen, surface a dialog (skipped while an update
+        // is already being offered, since that banner covers it).
+        val current = AppUpdaterPlatform.currentVersionName
+        if (current.isNotBlank() && AppUpdaterPlatform.getLastSeenVersion() != current) {
+            AppUpdaterPlatform.setLastSeenVersion(current)
+            whatsNewVersion = current
+        }
     }
     LaunchedEffect(state.update?.tag) {
         showReleaseNotes = false
@@ -153,6 +162,38 @@ fun AppUpdaterHost(
             onContinue = controller::resumeInstallation,
             onDismiss = controller::dismissDialog,
         )
+    }
+
+    whatsNewVersion?.let { version ->
+        WhatsNewDialog(
+            version = version,
+            onDismiss = { whatsNewVersion = null },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WhatsNewDialog(
+    version: String,
+    onDismiss: () -> Unit,
+) {
+    DialogSurface(
+        onDismissRequest = onDismiss,
+        title = stringResource(Res.string.updates_whats_new_title),
+    ) {
+        Text(
+            text = stringResource(Res.string.updates_whats_new_body, version),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        DialogButtons {
+            DialogButton(
+                text = stringResource(Res.string.action_close),
+                onClick = onDismiss,
+                style = DialogButtonStyle.Primary,
+            )
+        }
     }
 }
 

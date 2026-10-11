@@ -13,11 +13,39 @@ entry, so installing or updating it will **not** touch your official Nuvio insta
 
 - In-app updates: a **Check for updates** button in `Settings → About`, plus a
   seamless update banner that downloads and installs the newest `NuvioDev` MSI.
+  Every Dev build is versioned (`0.2-alpha.<run>`) so updates are always detected.
+- **What's new** dialog shown once after updating.
+- Update channel picker (Stable / Beta).
+- Desktop window options: remember size/position, **always on top**, and
+  **minimize to tray**.
+- Player extras: **A-B loop** (`Shift+A` / `Shift+C`), frame step (`,` / `.`),
+  subtitle delay nudge (`G` / `H`), and rich keyboard shortcuts.
+- Diagnostics: in-app **View logs** screen and a crash-reporting opt-out.
 - Builds are published only for **Windows x64** (MSI) from the `Dev` branch.
-- Assorted personal tweaks and fixes (e.g. subtitle track selection on seek,
-  skip intro/outro via introdb).
+- Assorted personal tweaks (e.g. subtitle track selection on seek, skip
+  intro/outro via introdb).
 - Uses the debug keystore for release signing when no release keystore is
   configured, so fork builds are installable without your own keystore.
+
+## Player keyboard shortcuts (desktop)
+
+| Key | Action |
+| --- | --- |
+| `Space` | Play/pause (hold to speed up) |
+| `←` / `→` (or `J` / `L`) | Seek 10s (Shift for fine seek) |
+| `↑` / `↓` | Volume |
+| `+` / `-` / `[` / `]` | Playback speed |
+| `=` / `Shift+Z` | Reset speed to 1x |
+| `S` | Cycle subtitles |
+| `A` | Audio track menu |
+| `V` | Toggle subtitles |
+| `G` / `H` | Subtitle delay −/+ 100 ms |
+| `,` / `.` | Step one frame back/forward |
+| `Shift+A` / `Shift+C` | Set A-B loop / clear A-B loop |
+| `Enter` | Skip intro/outro when the prompt is visible |
+| `T` | Stream info |
+| `X` | Stop |
+| `P` | Picture-in-picture |
 
 ## Get NuvioDev
 

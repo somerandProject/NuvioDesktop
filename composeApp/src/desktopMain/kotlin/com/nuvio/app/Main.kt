@@ -19,6 +19,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.deeplink.handleAppUrl
+import com.nuvio.app.core.diagnostics.DesktopLogWriter
 import com.nuvio.app.core.diagnostics.SentryInitializer
 import com.nuvio.app.core.ui.NuvioTheme
 import com.nuvio.app.core.ui.ProvideDesktopWindowInsets
@@ -28,6 +29,8 @@ import com.nuvio.app.features.plugins.configureDesktopQuickJsLibrary
 import com.nuvio.app.features.player.PlatformPlayerSurface
 import com.nuvio.app.features.player.desktop.DesktopAppFullscreenController
 import com.nuvio.app.features.player.desktop.DesktopHostOs
+import com.nuvio.app.features.player.desktop.DesktopTrayManager
+import com.nuvio.app.features.player.desktop.DesktopWindowBehavior
 import com.nuvio.app.features.player.desktop.DesktopWindowGeometry
 import com.nuvio.app.features.player.desktop.DesktopWindowModeStorage
 import com.nuvio.app.features.player.desktop.NativePlayerBridge
@@ -57,6 +60,7 @@ fun main(args: Array<String>) {
         runCatching { NativePlayerBridge.initGtkEarly() }
     }
     applyDesktopRendererPreference()
+    DesktopLogWriter.install()
     SentryInitializer.start()
     configureDesktopQuickJsLibrary()
     configureDesktopChrome()
@@ -155,6 +159,41 @@ fun main(args: Array<String>) {
                 // Windows fullscreen is emulated natively and isn't reflected by
                 // WindowPlacement, so it must be re-applied once the window peer exists.
                 fullscreenController.applyRestoredFullscreenState(window, windowState, wasFullscreenOnLastExit)
+            }
+            LaunchedEffect(window) {
+                val alwaysOnTopFlow = DesktopWindowBehavior.alwaysOnTop
+                alwaysOnTopFlow.collect { enabled ->
+                    runCatching { window.isAlwaysOnTop = enabled }
+                }
+            }
+            val minimizeToTray by DesktopWindowBehavior.minimizeToTray.collectAsState()
+            DisposableEffect(window, minimizeToTray) {
+                if (!minimizeToTray || !DesktopTrayManager.isSupported) {
+                    onDispose { }
+                } else {
+                    val restore = { runCatching { window.isVisible = true } }
+                    DesktopTrayManager.install(
+                        tooltip = "Nuvio",
+                        onRestore = restore,
+                        onExit = {
+                            DesktopTrayManager.remove()
+                            P2pStreamingEngine.shutdown()
+                            DiscordPresenceManager.shutdown()
+                            SentryInitializer.close()
+                            exitApplication()
+                        },
+                    )
+                    val listener = object : java.awt.event.WindowAdapter() {
+                        override fun windowIconified(event: java.awt.event.WindowEvent?) {
+                            runCatching { window.isVisible = false }
+                        }
+                    }
+                    window.addWindowListener(listener)
+                    onDispose {
+                        window.removeWindowListener(listener)
+                        DesktopTrayManager.remove()
+                    }
+                }
             }
             LaunchedEffect(windowState) {
                 // Covers OS-driven placement changes too (e.g. the native macOS

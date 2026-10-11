@@ -24,6 +24,8 @@ internal object DesktopWindowModeStorage {
     private const val WindowYKey = "window_y"
     private const val WindowWidthKey = "window_width"
     private const val WindowHeightKey = "window_height"
+    private const val AlwaysOnTopKey = "always_on_top"
+    private const val MinimizeToTrayKey = "minimize_to_tray"
     private val store = DesktopStorage.store("nuvio_window_state")
 
     fun loadWasFullscreen(): Boolean =
@@ -53,5 +55,19 @@ internal object DesktopWindowModeStorage {
         store.putFloat(WindowYKey, geometry.y)
         store.putFloat(WindowWidthKey, geometry.width)
         store.putFloat(WindowHeightKey, geometry.height)
+    }
+
+    fun loadAlwaysOnTop(): Boolean =
+        store.getBoolean(AlwaysOnTopKey) ?: false
+
+    fun saveAlwaysOnTop(alwaysOnTop: Boolean) {
+        store.putBoolean(AlwaysOnTopKey, alwaysOnTop)
+    }
+
+    fun loadMinimizeToTray(): Boolean =
+        store.getBoolean(MinimizeToTrayKey) ?: false
+
+    fun saveMinimizeToTray(minimizeToTray: Boolean) {
+        store.putBoolean(MinimizeToTrayKey, minimizeToTray)
     }
 }
