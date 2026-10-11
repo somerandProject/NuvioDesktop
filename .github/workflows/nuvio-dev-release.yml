@@ -13,12 +13,16 @@ on:
         required: false
         type: string
   push:
+    branches:
+      - Dev
     tags:
       - "*"
 
 permissions:
   contents: write
 
+# Pushes to Dev publish a rolling "latest" release (used by the in-app updater);
+# pushing a version tag (e.g. "0.1") publishes a versioned release as well.
 concurrency:
   group: nuvio-dev-release-${{ github.ref }}
   cancel-in-progress: false
@@ -229,13 +233,13 @@ jobs:
             touch local.properties
           fi
       - name: Build release APK
-        run: ./gradlew :composeApp:assembleFullRelease --no-configuration-cache --no-daemon --stacktrace
+        run: ./gradlew :androidApp:assembleFullRelease --no-configuration-cache --no-daemon --stacktrace
       - name: Collect artifact
         env:
           VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           mkdir -p out
-          apk="$(find composeApp/build/outputs -name '*.apk' | grep -i release | head -n1)"
+          apk="$(find androidApp/build/outputs/apk/full/release -maxdepth 1 -name '*.apk' | head -n1)"
           cp "${apk}" "out/NuvioDev-${VERSION}-android.apk"
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -294,7 +298,8 @@ jobs:
           } > release-notes.md
           cat release-notes.md
 
-      - name: Create or update release
+      - name: Create or update versioned release
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -euo pipefail
           if gh release view "${TAG}" >/dev/null 2>&1; then
@@ -315,7 +320,7 @@ jobs:
               gh release delete-asset nuvio-dev-latest "$(basename "${asset}")" --yes 2>/dev/null || true
             done
             gh release upload nuvio-dev-latest dist/* --clobber
-            gh release edit nuvio-dev-latest --title "NuvioDev ${VERSION}" --notes-file release-notes.md
+            gh release edit nuvio-dev-latest --title "NuvioDev ${VERSION}" --notes-file release-notes.md --latest
           else
             gh release create nuvio-dev-latest dist/* \
               --title "NuvioDev ${VERSION}" \
