@@ -129,7 +129,21 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "../composeApp/proguard-rules.pro",
             )
-            signingConfig = signingConfigs.getByName("release")
+            // Fork/dev builds without a release keystore fall back to the debug
+            // keystore (valid for sideloading) so the release APK is installable
+            // instead of unsigned. Explicit "skipReleaseSigning" still allows a
+            // fully unsigned build when needed.
+            val skipReleaseSigning = providers.gradleProperty("nuvio.android.skipReleaseSigning")
+                .map(String::toBooleanStrict)
+                .getOrElse(false)
+            val hasReleaseKeystore = releaseKeystore != null && releaseStorePassword != null &&
+                releaseKeyAlias != null && releaseKeyPassword != null
+            when {
+                hasReleaseKeystore && !skipReleaseSigning ->
+                    signingConfig = signingConfigs.getByName("release")
+                !skipReleaseSigning ->
+                    signingConfig = signingConfigs.getByName("debug")
+            }
             ndk {
                 debugSymbolLevel = "FULL"
             }

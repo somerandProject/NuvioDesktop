@@ -1787,6 +1787,8 @@ private fun StringBuilder.appendSubtitleOptionItemJson(item: PlayerControlSubtit
     append(',')
     appendJsonField("index", item.index)
     append(',')
+    appendJsonField("cycleIndex", item.cycleIndex)
+    append(',')
     appendJsonField("sourceLabel", item.sourceLabel)
     append(',')
     appendJsonField("title", item.title)

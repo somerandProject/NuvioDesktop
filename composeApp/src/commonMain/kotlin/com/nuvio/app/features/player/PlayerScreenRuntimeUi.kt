@@ -1037,7 +1037,8 @@ private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: D
             persistAudioPreference(audioTracks.firstOrNull { it.index == index })
             playerController?.selectAudioTrack(index)
         }
-        "fetchAddonSubtitles" -> fetchAddonSubtitlesForActiveItem()
+"fetchAddonSubtitles" -> fetchAddonSubtitlesForActiveItem()
+        "setSubtitleByCycleIndex" -> selectSubtitleByCycleIndex(value.toInt())
         "selectAddonSubtitle" -> {
             val addon = visibleAddonSubtitles.getOrNull(value.toInt()) ?: return true
             playerControlsLog.d {
@@ -1121,6 +1122,79 @@ private fun PlayerScreenRuntime.handlePlayerControlsEvent(type: String, value: D
         else -> return false
     }
     return true
+}
+
+// Rebuilds the exact same flat subtitle option ordering the controls webview
+// uses (Off, then per-language built-in/addon options) and applies the target
+// at [cycleIndexValue]. 0 turns subtitles off; otherwise it selects one specific
+// track instead of letting the native side re-resolve a language group.
+private fun PlayerScreenRuntime.selectSubtitleByCycleIndex(cycleIndexValue: Int) {
+    val flatOptions = subtitleCycleOptions()
+    val target = cycleIndexValue - 1
+    if (target < 0 || target >= flatOptions.size) {
+        isUserExplicitSubtitleSelection = true
+        preferredSubtitleSelectionApplied = true
+        selectedSubtitleIndex = -1
+        selectedAddonSubtitleId = null
+        useCustomSubtitles = false
+        persistInternalSubtitlePreference(null)
+        playerController?.selectSubtitleTrack(-1)
+        return
+    }
+    when (val option = flatOptions[target]) {
+        is SubtitleSelectionOption.BuiltIn -> {
+            val track = option.track
+            val wasCustom = useCustomSubtitles
+            isUserExplicitSubtitleSelection = true
+            preferredSubtitleSelectionApplied = true
+            selectedSubtitleIndex = track.index
+            selectedAddonSubtitleId = null
+            useCustomSubtitles = false
+            persistInternalSubtitlePreference(track)
+            if (wasCustom) {
+                playerController?.clearExternalSubtitleAndSelect(track.index)
+            } else {
+                playerController?.selectSubtitleTrack(track.index)
+            }
+        }
+        is SubtitleSelectionOption.Addon -> {
+            val addon = option.subtitle
+            isUserExplicitSubtitleSelection = true
+            preferredSubtitleSelectionApplied = true
+            selectedAddonSubtitleId = addon.selectionKey
+            selectedSubtitleIndex = -1
+            useCustomSubtitles = true
+            persistAddonSubtitlePreference(addon)
+            playerController?.setSubtitleUri(addon.url)
+        }
+    }
+}
+
+// Mirrors buildPlayerControlSubtitleSelection()'s flat option ordering without
+// needing composition: languages in display order, each contributing its
+// built-in then addon options.
+private fun PlayerScreenRuntime.subtitleCycleOptions(): List<SubtitleSelectionOption> {
+    val selectedAddon = selectedAddonSubtitle
+    val selectedLanguageKey = selectedSubtitleLanguageKey(
+        subtitleTracks = subtitleTracks,
+        selectedSubtitleIndex = selectedSubtitleIndex,
+        selectedAddonSubtitle = selectedAddon,
+    )
+    val languageItems = buildSubtitleLanguageItems(
+        subtitleTracks = subtitleTracks,
+        addonSubtitles = visibleAddonSubtitles,
+        preferredLanguage = playerSettingsUiState.preferredSubtitleLanguage,
+        secondaryPreferredLanguage = playerSettingsUiState.secondaryPreferredSubtitleLanguage,
+        showOnlyPreferredLanguages = subtitleStyle.showOnlyPreferredLanguages,
+        selectedLanguageKey = selectedLanguageKey,
+    )
+    return languageItems.flatMap { language ->
+        buildSubtitleSelectionOptions(
+            languageKey = language.key,
+            subtitleTracks = subtitleTracks,
+            addonSubtitles = visibleAddonSubtitles,
+        )
+    }
 }
 
 private fun PlayerScreenRuntime.requestP2pConsentForPlayerControls(
@@ -1568,7 +1642,7 @@ private fun PlayerScreenRuntime.buildPlayerControlSubtitleSelection(): PlayerCon
                 }
             }
         }
-    }
+    }.mapIndexed { index, item -> item.copy(cycleIndex = index) }
     return PlayerControlSubtitleSelection(
         languages = languages,
         options = options,

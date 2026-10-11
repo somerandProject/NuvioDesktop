@@ -1163,6 +1163,7 @@ const subtitleSelectionOptions = () => normalizeItems(state.subtitleOptionItems)
   metadata: String(item.metadata || ""),
   selected: Boolean(item.isSelected),
   index: Number(item.index) || 0,
+  cycleIndex: Number(item.cycleIndex) || 0,
 }));
 
 const subtitleLanguages = () => normalizeItems(state.subtitleLanguageItems).map(item => ({
@@ -1187,9 +1188,11 @@ const cyclePlayerSubtitle = () => {
   const nextIndex = (currentIndex + 1) % options.length;
   const next = options[nextIndex];
   const label = next.label || next.title || displayLanguageName(next.languageKey) || (state.subtitlesLabel || "Subs");
-  if (next.kind === "builtIn") send("selectBuiltInSubtitleTrack", next.index);
-  else if (next.kind === "addon") send("selectAddonSubtitle", next.index);
-  else send("selectBuiltInSubtitleTrack", -1);
+  // Send the absolute position in this exact option list so the native side
+  // selects one specific track. Off is 0; the remaining slots are the option
+  // items in the same order, identified by their cycleIndex.
+  const targetValue = next.kind === "off" ? 0 : (Number(next.cycleIndex) + 1);
+  send("setSubtitleByCycleIndex", targetValue);
   showPlayerToast(label, { icon: "icon-subtitles" });
 };
 

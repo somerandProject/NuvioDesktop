@@ -333,6 +333,7 @@ data class PlayerControlSubtitleOptionItem(
     val languageKey: String = "",
     val kind: String = "",
     val index: Int = 0,
+    val cycleIndex: Int = 0,
     val sourceLabel: String = "",
     val title: String = "",
     val metadata: String = "",
