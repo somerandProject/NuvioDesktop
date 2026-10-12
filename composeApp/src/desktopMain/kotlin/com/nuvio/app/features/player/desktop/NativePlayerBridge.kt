@@ -132,14 +132,15 @@ internal object NativePlayerBridge {
             ) {
                 runCatching { warmupWebView2(controlsPage.url) }
             }
+            if (DesktopHostOs.current == DesktopHostOs.WINDOWS) {
+                runCatching { shutdownWebView2Warmup() }
+            }
         }.apply {
             name = "nuvio-native-player-preload"
             isDaemon = true
             start()
         }
-        if (DesktopHostOs.current == DesktopHostOs.WINDOWS ||
-            DesktopHostOs.current == DesktopHostOs.LINUX
-        ) {
+        if (DesktopHostOs.current == DesktopHostOs.LINUX) {
             Runtime.getRuntime().addShutdownHook(
                 Thread {
                     runCatching { shutdownWebView2Warmup() }
