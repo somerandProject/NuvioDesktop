@@ -175,14 +175,13 @@ internal object NativePlayerBridge {
             return
         }
 
-        val resource = "/native/$platformDir/$libraryName"
-        val files = buildMap {
-            put(libraryName, readResourceBytes(resource))
-            bundledRuntimeResourceNames(platformDir).forEach { name ->
-                resourceBytesOrNull("/native/$platformDir/$name")?.let { bytes -> put(name, bytes) }
+        val resources = (listOf(libraryName) + bundledRuntimeResourceNames(platformDir))
+            .mapNotNull { name ->
+                NativePlayerBridge::class.java.getResource("/native/$platformDir/$name")?.let { url -> name to url }
             }
-        }
-        val directory = DesktopCache.installVersionedFiles("native-player-bridge/$platformDir", files).toFile()
+            .toMap()
+        require(libraryName in resources) { "Missing native player resource: /native/$platformDir/$libraryName" }
+        val directory = DesktopCache.installVersionedResources("native-player-bridge/$platformDir", resources).toFile()
         loadNativeRuntimeDependencies(platform, directory)
         System.load(directory.resolve(libraryName).absolutePath)
     }
