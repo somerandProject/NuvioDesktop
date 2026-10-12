@@ -65,6 +65,7 @@ import nuvio.composeapp.generated.resources.action_close
 import nuvio.composeapp.generated.resources.action_continue
 import nuvio.composeapp.generated.resources.action_install
 import nuvio.composeapp.generated.resources.action_later
+import nuvio.composeapp.generated.resources.action_open_page
 import nuvio.composeapp.generated.resources.action_retry
 import nuvio.composeapp.generated.resources.action_update
 import nuvio.composeapp.generated.resources.updates_debug_test_complete

@@ -201,7 +201,7 @@ actual object AppUpdaterPlatform {
 
     // A missing digest skips verification (older releases have none); a
     // present-but-different digest always fails the download.
-    private fun verifyChecksum(file: File, expectedSha256: String?) {
+    private suspend fun verifyChecksum(file: File, expectedSha256: String?) {
         if (expectedSha256.isNullOrBlank()) return
         val actual = sha256Hex(file)
         if (!actual.equals(expectedSha256, ignoreCase = true)) {

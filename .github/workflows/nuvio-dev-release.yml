@@ -72,6 +72,11 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v6
+      - name: Install Linux native build deps
+        shell: bash
+        # The desktop JVM target pulls in composeMediaPlayer, whose Linux
+        # native player is built with CMake against gstreamer.
+        run: sudo apt-get update && sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
