@@ -11,6 +11,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
@@ -58,13 +61,16 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         onDispose { systemBackRegistration(null) }
     }
     val isInPip = rememberIsInPictureInPicture()
-    val displayedPositionMs = scrubbingPositionMs ?: playbackSnapshot.positionMs
+    val playbackIsPlaying by remember { derivedStateOf { playbackSnapshot.isPlaying } }
+    val playbackIsLoading by remember { derivedStateOf { playbackSnapshot.isLoading } }
+    val playbackDurationMs by remember { derivedStateOf { playbackSnapshot.durationMs } }
+    val playbackSpeedValue by remember { derivedStateOf { playbackSnapshot.playbackSpeed } }
     val seasonNumber = activeSeasonNumber
     val episodeNumber = activeEpisodeNumber
     val episodeTitle = activeEpisodeTitle
     val isEpisode = seasonNumber != null && episodeNumber != null
 
-    LaunchedEffect(runtime.title, runtime.poster, seasonNumber, episodeNumber, episodeTitle, playbackSnapshot.isPlaying) {
+    LaunchedEffect(runtime.title, runtime.poster, seasonNumber, episodeNumber, episodeTitle, playbackIsPlaying) {
         val episodeLabel = if (isEpisode) {
             val base = "S${seasonNumber}E${episodeNumber}"
             if (!episodeTitle.isNullOrBlank()) "$base - $episodeTitle" else base
@@ -133,19 +139,18 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
             nuvio.composeapp.generated.resources.Res.string.player_torrent_starting_engine,
         )
     }
-    val bufferedAheadMs = (playbackSnapshot.bufferedPositionMs - playbackSnapshot.positionMs)
-        .coerceAtLeast(0L)
     val p2pInitialLoadingProgress = when {
         !isP2pPlaybackActive || initialLoadCompleted || p2pStats == null -> null
         else -> p2pInitialLoadingProgress(
-            bufferedAheadMs = bufferedAheadMs,
+            bufferedAheadMs = (playbackSnapshot.bufferedPositionMs - playbackSnapshot.positionMs)
+                .coerceAtLeast(0L),
             downloadedBytes = p2pStats.downloadedBytes,
             deliveredBytes = p2pStats.deliveredBytes,
         )
     }
     val showP2pRebufferStats = isP2pPlaybackActive &&
         initialLoadCompleted &&
-        playbackSnapshot.isLoading &&
+        playbackIsLoading &&
         p2pStats != null &&
         !p2pSettingsUiState.hideTorrentStats
     val p2pRebufferMessage = when {
@@ -228,7 +233,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val nativeSkipInterval = activeSkipInterval.takeIf {
         initialLoadCompleted && !pausedOverlayVisible && !skipIntervalDismissed
     }
-    val nativeSkipAction = nativeSkipInterval?.internalSkipAction(skipIntervals, playbackSnapshot.durationMs)
+    val nativeSkipAction = nativeSkipInterval?.internalSkipAction(skipIntervals, playbackDurationMs)
     val nextEpisodeForControls = nextEpisodeInfo.takeIf { 
         isSeries && (showNextEpisodeCard || nextEpisodeAutoPlaySearching || nextEpisodeAutoPlayCountdown != null) 
     }
@@ -261,7 +266,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         pauseOverlayEpisodeTitle = activeEpisodeTitle.orEmpty(),
         pauseOverlayDescription = (activePauseDescription ?: activeStreamSubtitle).orEmpty(),
         resizeModeLabel = stringResource(resizeMode.labelRes),
-        playbackSpeedLabel = formatPlaybackSpeedLabel(playbackSnapshot.playbackSpeed),
+        playbackSpeedLabel = formatPlaybackSpeedLabel(playbackSpeedValue),
         subtitlesLabel = stringResource(Res.string.compose_player_subs),
         audioLabel = stringResource(Res.string.compose_player_audio),
         sourcesLabel = stringResource(Res.string.compose_player_sources),
@@ -361,8 +366,8 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         themeTextSecondaryColor = themeColors.textSecondary.toCssColorString(),
         themeTextMutedColor = themeColors.textMuted.toCssColorString(),
         themeBorderDefaultColor = themeColors.borderDefault.toCssColorString(),
-        isPlaying = playbackSnapshot.isPlaying,
-        isLoading = playbackSnapshot.isLoading,
+        isPlaying = playbackIsPlaying,
+        isLoading = playbackIsLoading,
         isLocked = playerControlsLocked,
         lockedOverlayVisible = lockedOverlayVisible,
         controlsVisible = controlsVisible && !playerControlsLocked,
@@ -376,8 +381,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         showSources = activeVideoId != null,
         showEpisodes = isSeries,
         showExternalPlayer = args.onOpenInExternalPlayer != null,
-        durationMs = playbackSnapshot.durationMs,
-        positionMs = displayedPositionMs,
+        durationMs = playbackDurationMs,
         sourceIsLoading = sourceStreamsState.isAnyLoading,
         sourceFilters = sourceFilters,
         sourceItems = sourceItems,
@@ -425,7 +429,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
             p2pInitialLoadingMessage ?: playerLoadingStatusMessage(
                 showStatus = true,
                 controllerReady = playerController != null,
-                buffering = playbackSnapshot.isLoading,
+                buffering = playbackIsLoading,
             )
         } else null,
         openingProgress = p2pInitialLoadingProgress,
@@ -584,11 +588,10 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         }
 
         if (!isDesktop) {
-            RenderPlayerControls(displayedPositionMs = displayedPositionMs, isEpisode = isEpisode)
+            RenderPlayerControls(isEpisode = isEpisode)
         }
         RenderPlaybackOverlays(
             runtime = runtime,
-            displayedPositionMs = displayedPositionMs,
             currentGestureFeedback = currentGestureFeedback,
             p2pInitialLoadingMessage = p2pInitialLoadingMessage,
             p2pInitialLoadingProgress = p2pInitialLoadingProgress,
@@ -597,7 +600,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
             p2pRebufferProgress = p2pRebufferProgress,
             suppressOpeningOverlay = isDesktop && playerSurfaceSourceUrl != null,
         )
-        RenderPlayerModals(displayedPositionMs = displayedPositionMs)
+        RenderPlayerModals()
     }
 }
 
@@ -625,7 +628,8 @@ private fun PlayerScreenRuntime.currentInitialPositionRequestKey(): String? {
 }
 
 @Composable
-private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, isEpisode: Boolean) {
+private fun PlayerScreenRuntime.RenderPlayerControls(isEpisode: Boolean) {
+    val displayedPositionMs = scrubbingPositionMs ?: playbackSnapshot.positionMs
     val isInPip = rememberIsInPictureInPicture()
     AnimatedVisibility(
         visible = (controlsVisible || showParentalGuide) && !playerControlsLocked && !isInPip,
@@ -1360,7 +1364,6 @@ private fun formatPlayerControlsSeconds(seconds: Double): String {
 }
 
 private fun PlayerScreenRuntime.handlePlayerControlsScrubChange(positionMs: Long) {
-    playerControlsLog.d { "scrubChange positionMs=$positionMs ${playerControlLogContext()}" }
     isScrubbingTimeline = true
     scrubbingPositionMs = positionMs
 }
@@ -1754,7 +1757,6 @@ private fun MetaVideo.playerControlsEpisodeCode(): String =
 @Composable
 private fun BoxScope.RenderPlaybackOverlays(
     runtime: PlayerScreenRuntime,
-    displayedPositionMs: Long,
     currentGestureFeedback: GestureFeedbackState?,
     p2pInitialLoadingMessage: String?,
     p2pInitialLoadingProgress: Float?,
@@ -1764,6 +1766,7 @@ private fun BoxScope.RenderPlaybackOverlays(
     suppressOpeningOverlay: Boolean,
 ) {
     runtime.run {
+        val displayedPositionMs = scrubbingPositionMs ?: playbackSnapshot.positionMs
         PlayerPlaybackOverlays(
             playerControlsLocked = playerControlsLocked,
             useLegacyLayout = isDesktop || playerSettingsUiState.useLegacyPlayerLayout,
@@ -1834,7 +1837,8 @@ private fun BoxScope.RenderPlaybackOverlays(
 }
 
 @Composable
-private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
+private fun PlayerScreenRuntime.RenderPlayerModals() {
+    val displayedPositionMs = scrubbingPositionMs ?: playbackSnapshot.positionMs
     PlayerScreenModalHosts(
         pendingP2pSwitch = pendingP2pSwitch,
         onPendingP2pSwitchChanged = { pendingP2pSwitch = it },

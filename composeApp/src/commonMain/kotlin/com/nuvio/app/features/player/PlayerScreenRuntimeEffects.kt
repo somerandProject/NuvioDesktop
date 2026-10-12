@@ -298,9 +298,6 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
     LaunchedEffect(
         playerController,
         playbackSnapshot.isLoading,
-        preferredAudioSelectionApplied,
-        preferredSubtitleSelectionApplied,
-        trackPreferenceRestoreApplied,
         addonSubtitles,
         isLoadingAddonSubtitles,
     ) {

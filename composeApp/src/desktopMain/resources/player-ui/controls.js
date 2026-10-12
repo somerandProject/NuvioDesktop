@@ -817,21 +817,34 @@ const setProgress = (positionMs, durationMs) => {
 };
 
 const setText = (element, text) => {
-  element.textContent = text || "";
-  element.hidden = !text;
+  const value = text || "";
+  if (element.textContent !== value) element.textContent = value;
+  if (element.hidden === Boolean(text)) element.hidden = !text;
+};
+
+const writeText = (element, value) => {
+  const text = value || "";
+  if (element.textContent !== text) element.textContent = text;
 };
 
 const setVisible = (element, visible) => {
   element.hidden = !visible;
 };
 
+const actionButtonLabelCache = new Map();
 const setActionButtonLabel = (command, label) => {
-  const button = document.querySelector(`.action[data-command="${command}"]`);
+  let button = actionButtonLabelCache.get(command);
+  if (button === undefined) {
+    button = document.querySelector(`.action[data-command="${command}"]`) || null;
+    actionButtonLabelCache.set(command, button);
+  }
   if (!button) return;
   const text = String(label || "").trim();
   if (!text) return;
-  button.setAttribute("aria-label", text);
-  button.setAttribute("title", text);
+  if (button.getAttribute("aria-label") !== text) {
+    button.setAttribute("aria-label", text);
+    button.setAttribute("title", text);
+  }
 };
 
 const setImageVisualState = (element, stateName) => {
@@ -2475,16 +2488,16 @@ const renderChrome = () => {
   if (state.pauseOverlayEnabled || showError) renderPauseMetadataOverlay(showOpening || showError);
   syncParentalGuide(showOpening || showError);
 
-  title.textContent = state.title || "";
+  writeText(title, state.title);
   setText(episode, state.episodeText);
   setText(streamTitle, state.streamTitle);
   setText(providerName, state.providerName);
-  resizeLabel.textContent = state.resizeModeLabel || "Fit";
-  speedLabel.textContent = state.playbackSpeedLabel || "1x";
-  subtitlesLabel.textContent = state.subtitlesLabel || "Subs";
-  audioLabel.textContent = state.audioLabel || "Audio";
-  sourcesLabel.textContent = state.sourcesLabel || "Sources";
-  episodesLabel.textContent = state.episodesLabel || "Episodes";
+  writeText(resizeLabel, state.resizeModeLabel || "Fit");
+  writeText(speedLabel, state.playbackSpeedLabel || "1x");
+  writeText(subtitlesLabel, state.subtitlesLabel || "Subs");
+  writeText(audioLabel, state.audioLabel || "Audio");
+  writeText(sourcesLabel, state.sourcesLabel || "Sources");
+  writeText(episodesLabel, state.episodesLabel || "Episodes");
   setActionButtonLabel("resize", state.resizeModeLabel || "Fit");
   setActionButtonLabel("speed", state.playbackSpeedLabel || "1x");
   setActionButtonLabel("subtitles", state.subtitlesLabel || "Subs");
@@ -2517,14 +2530,16 @@ const renderChrome = () => {
     toggleIcon.setAttribute("href", isPlaying ? "#icon-pause" : "#icon-play");
   }
   if (toggleLabel) {
-    toggleLabel.textContent = playPauseLabel || (isPlaying ? "Pause" : "Play");
+    writeText(toggleLabel, playPauseLabel || (isPlaying ? "Pause" : "Play"));
   }
   if (nextEpisodeButton) {
     nextEpisodeButton.hidden = !state.nextEpisodePlayable;
     const nextLabel = state.nextEpisodeHeaderLabel || "Next episode";
-    nextEpisodeButton.setAttribute("aria-label", nextLabel);
-    nextEpisodeButton.setAttribute("title", nextLabel);
-    if (nextEpisodeButtonLabel) nextEpisodeButtonLabel.textContent = nextLabel;
+    if (nextEpisodeButton.getAttribute("aria-label") !== nextLabel) {
+      nextEpisodeButton.setAttribute("aria-label", nextLabel);
+      nextEpisodeButton.setAttribute("title", nextLabel);
+    }
+    if (nextEpisodeButtonLabel) writeText(nextEpisodeButtonLabel, nextLabel);
   }
   syncFullscreenButtons();
   backButton.setAttribute("aria-label", state.closeLabel || "Close player");
@@ -2637,9 +2652,11 @@ const ensureActionFocus = ({ focus = true } = {}) => {
 };
 
 const syncActionFocusState = () => {
+  const focusedButtons = document.querySelectorAll(".action-pill .action.focused");
+  if (!focusedActionCommand && focusedButtons.length === 0) return;
   const controls = visibleActionButtons();
   const visibleSet = new Set(controls);
-  document.querySelectorAll(".action-pill .action.focused").forEach(button => {
+  focusedButtons.forEach(button => {
     if (!visibleSet.has(button)) button.classList.remove("focused");
   });
   if (controls.some(button => button.classList.contains("focused"))) return;
@@ -3211,10 +3228,14 @@ window.playerUpdate = update => {
   const volumeLevel = Number.isFinite(reportedVolumeLevel)
     ? clampVolumeLevel(reportedVolumeLevel)
     : state.volumeLevel;
-  const audioTracks = normalizeTracks(update.audioTracks);
-  const subtitleTracks = normalizeTracks(update.subtitleTracks);
-  const audioTracksChanged = trackListSignature(audioTracks) !== trackListSignature(state.audioTracks);
-  const subtitleTracksChanged = trackListSignature(subtitleTracks) !== trackListSignature(state.subtitleTracks);
+  const hasAudioTracksUpdate = update.audioTracks !== undefined;
+  const hasSubtitleTracksUpdate = update.subtitleTracks !== undefined;
+  const audioTracks = hasAudioTracksUpdate ? normalizeTracks(update.audioTracks) : state.audioTracks;
+  const subtitleTracks = hasSubtitleTracksUpdate ? normalizeTracks(update.subtitleTracks) : state.subtitleTracks;
+  const audioTracksChanged = hasAudioTracksUpdate &&
+    trackListSignature(audioTracks) !== trackListSignature(state.audioTracks);
+  const subtitleTracksChanged = hasSubtitleTracksUpdate &&
+    trackListSignature(subtitleTracks) !== trackListSignature(state.subtitleTracks);
   const nativeIsPlaying = !Boolean(update.paused);
   lastNativeIsPlaying = nativeIsPlaying;
   if (pendingIsPlaying !== null && nativeIsPlaying === pendingIsPlaying) {

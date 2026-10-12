@@ -261,6 +261,7 @@ internal class PlayerScreenRuntime(
     var useCustomSubtitles by mutableStateOf(false)
     var preferredAudioSelectionApplied by mutableStateOf(false)
     var appliedAudioPreferences: AppliedAudioPreferences? = null
+    var audioTracksSteadyPollTicks: Int = 0
     var preferredSubtitleSelectionApplied by mutableStateOf(false)
     var activeSubtitleTab by mutableStateOf(SubtitleTab.BuiltIn)
     var isUserExplicitAudioSelection by mutableStateOf(false)

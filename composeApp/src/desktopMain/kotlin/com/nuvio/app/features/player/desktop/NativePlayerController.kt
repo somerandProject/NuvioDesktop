@@ -444,7 +444,7 @@ internal class NativePlayerController(
         lastSentControlsStructureKey = structureKey
         log.d {
             "updateControls handle=$current title=${stateWithVolume.title.take(40)} " +
-                "pos=${stateWithVolume.positionMs} duration=${stateWithVolume.durationMs} " +
+                "duration=${stateWithVolume.durationMs} " +
                 "speed=${stateWithVolume.playbackSpeedLabel} audioLabel=${stateWithVolume.audioLabel} " +
                 "subsLabel=${stateWithVolume.subtitlesLabel} fullscreen=$isFullscreen"
         }
@@ -522,11 +522,7 @@ internal class NativePlayerController(
         when (type) {
             "cursorActivity" -> host.noteCursorActivity()
             "scrubChange" -> {
-                val handled = onScrubChange(value.toLong())
-                log.d { "scrubChange positionMs=${value.toLong()} handled=$handled handle=$handle" }
-                if (!handled) {
-                    updateLocalProgress(value.toLong())
-                }
+                onScrubChange(value.toLong())
             }
             "scrubFinish" -> {
                 val scrubHandled = onScrubFinished(value.toLong())
@@ -565,12 +561,6 @@ internal class NativePlayerController(
                 }
             }
         }
-    }
-
-    @Synchronized
-    private fun updateLocalProgress(positionMs: Long) {
-        controlsState = controlsState.copy(positionMs = positionMs)
-        updateControls(controlsState)
     }
 
     private fun handleFallbackAction(action: PlayerControlsAction) {
@@ -1119,7 +1109,6 @@ private fun String.shouldLogNativeControlEvent(): Boolean {
     return normalized.contains("audio") ||
         normalized.contains("subtitle") ||
         normalized.contains("speed") ||
-        normalized.contains("scrub") ||
         normalized.contains("seek") ||
         normalized.contains("episode") ||
         normalized == "resize" ||
@@ -1519,8 +1508,6 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean): String =
         append(',')
         appendJsonField("durationMs", durationMs)
         append(',')
-        appendJsonField("positionMs", positionMs)
-        append(',')
         appendJsonField("sourceIsLoading", sourceIsLoading)
         append(',')
         appendJsonArrayField("sourceFilters", sourceFilters) { appendFilterItemJson(it) }
@@ -1610,7 +1597,6 @@ private fun PlayerControlsState.nativeControlsStructureKey(): PlayerControlsStat
         isPlaying = false,
         isLoading = false,
         durationMs = 0L,
-        positionMs = 0L,
     )
 
 private fun StringBuilder.appendJsonField(name: String, value: String) {

@@ -1405,6 +1405,9 @@ private:
     std::mutex controlsMutex;
     std::string pendingControlsJson;
     double initialStartSeconds = 0.0;
+    std::string cachedAudioTracksJson = "[]";
+    std::string cachedSubtitleTracksJson = "[]";
+    std::string cachedTracksSignature;
 
     friend LRESULT CALLBACK messageWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
     friend LRESULT CALLBACK containerWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -1877,18 +1880,26 @@ private:
         double volumeLevel = volume();
         bool paused = isPaused();
         bool loading = isLoading();
-        std::string audioTracks = audioTracksJson();
-        std::string subtitleTracks = subtitleTracksJson();
+        std::string tracksSignature = stringProperty("track-list/count", "") + std::string("|") +
+            stringProperty("aid", "") + "|" + stringProperty("sid", "");
+        bool tracksChanged = tracksSignature != cachedTracksSignature || tracksSignature.empty();
+        if (tracksChanged) {
+            cachedAudioTracksJson = audioTracksJson();
+            cachedSubtitleTracksJson = subtitleTracksJson();
+            cachedTracksSignature = tracksSignature;
+        }
 
         std::ostringstream script;
         script << "window.playerUpdate({duration:" << duration
                << ",position:" << position
                << ",volumeLevel:" << volumeLevel
                << ",paused:" << (paused ? "true" : "false")
-               << ",loading:" << (loading ? "true" : "false")
-               << ",audioTracks:" << audioTracks
-               << ",subtitleTracks:" << subtitleTracks
-               << "})";
+               << ",loading:" << (loading ? "true" : "false");
+        if (tracksChanged) {
+            script << ",audioTracks:" << cachedAudioTracksJson
+                   << ",subtitleTracks:" << cachedSubtitleTracksJson;
+        }
+        script << "})";
         std::wstring wideScript = toWide(script.str());
         webView->ExecuteScript(wideScript.c_str(), nullptr);
     }

@@ -4,6 +4,25 @@ All notable changes to this personal NuvioDev fork are documented here.
 This fork tracks the upstream [Nuvio Desktop](https://github.com/NuvioMedia/NuvioDesktop)
 project; all original work is credited there.
 
+## 0.3-alpha
+
+- **Performance**: playback polling overhaul — the native controls bridge only
+  rebuilds and re-injects track lists when they change, the Kotlin audio-track
+  poll is throttled, position ticks no longer rebuild the full player controls
+  state (no more full-UI recomposition or controls re-sync twice per second),
+  the WebView chrome skips DOM writes whose values are unchanged, and seek-drag
+  events no longer run full controls syncs or per-event disk logging.
+- **Performance (picked from upstream NuvioDesktop, credited)**: fast video
+  profile on integrated GPUs, player shaders kept between opens, bounded image
+  cache, player files no longer read into memory at launch, player preload
+  released after startup, lower desktop buffer with dropped-stream reconnect,
+  fallback to the older video renderer, BT.2390 HDR tone mapping.
+- **Player**: `Z` (like `Enter`) skips intro/outro while the skip prompt is
+  visible.
+- **Subtitles**: streams with built-in subtitle tracks auto-load the first
+  non-forced embedded track when no preferred subtitle language is configured;
+  explicit choices and language preferences still take precedence.
+
 ## 0.2-alpha
 
 - **In-app updates**: `Settings → About → Check for updates` plus a seamless
