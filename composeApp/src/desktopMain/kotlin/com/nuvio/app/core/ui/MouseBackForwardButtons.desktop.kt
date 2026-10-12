@@ -1,5 +1,6 @@
 package com.nuvio.app.core.ui
 
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -7,6 +8,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 
+@OptIn(ExperimentalComposeUiApi::class)
 internal actual fun Modifier.blockMouseBackForwardButtons(): Modifier =
     pointerInput(Unit) {
         awaitPointerEventScope {
@@ -23,6 +25,7 @@ internal actual fun Modifier.blockMouseBackForwardButtons(): Modifier =
         }
     }
 
+@OptIn(ExperimentalComposeUiApi::class)
 internal actual fun Modifier.onMouseBackButton(onBack: () -> Unit): Modifier =
     pointerInput(onBack) {
         awaitPointerEventScope {
@@ -40,5 +43,6 @@ internal actual fun Modifier.onMouseBackButton(onBack: () -> Unit): Modifier =
         }
     }
 
+@OptIn(ExperimentalComposeUiApi::class)
 internal actual fun Modifier.onMouseScroll(handler: () -> Unit): Modifier =
     onPointerEvent(PointerEventType.Scroll) { handler() }
