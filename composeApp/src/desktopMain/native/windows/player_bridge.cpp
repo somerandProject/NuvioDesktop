@@ -1726,7 +1726,7 @@ private:
                 setMpvOptionStringLocked("vd-lavc-software-fallback", "yes");
             }
             setMpvOptionStringLocked("vd-lavc-threads", "4");
-            setMpvOptionStringLocked("tone-mapping", "auto");
+            setMpvOptionStringLocked("tone-mapping", "bt.2390");
             setMpvOptionStringLocked("dither-depth", "auto");
             setMpvOptionStringLocked("deband", "yes");
             setMpvOptionStringLocked("scale", "spline36");
