@@ -78,6 +78,8 @@ const subtitleModal = document.getElementById("subtitleModal");
 const speedModal = document.getElementById("speedModal");
 const speedOptionList = document.getElementById("speedOptionList");
 const speedPanelTitle = document.getElementById("speedPanelTitle");
+const shortcutsModal = document.getElementById("shortcutsModal");
+const shortcutsList = document.getElementById("shortcutsList");
 const audioPanelTitle = document.getElementById("audioPanelTitle");
 const audioTrackList = document.getElementById("audioTrackList");
 const subtitleTrackList = document.getElementById("subtitleTrackList");
@@ -551,6 +553,10 @@ const volumeStepLevel = 0.05;
 
 const clampVolumeLevel = level => Math.max(0, Math.min(maxVolumeLevel, level));
 
+// Ceiling for wheel/keyboard/slider volume changes: 200% only when the
+// player volume boost setting is on, otherwise 100%.
+const volumeCeiling = () => (state.volumeBoostEnabled ? maxVolumeLevel : standardMaxVolumeLevel);
+
 const volumeToastLabel = (fallbackDelta = 0) => {
   const volumeLevel = state.volumeLevel;
   if (typeof volumeLevel === "number" && Number.isFinite(volumeLevel)) {
@@ -586,8 +592,9 @@ const syncVolumeControl = () => {
 };
 
 const seekToastLabel = command => {
-  if (command === "seekBack" || command === "keyboardSeekBack") return "-10s";
-  if (command === "seekForward" || command === "keyboardSeekForward") return "+10s";
+  const stepSeconds = Math.max(1, Number(state.keyboardSeekStepSeconds) || 10);
+  if (command === "seekBack" || command === "keyboardSeekBack") return `-${stepSeconds}s`;
+  if (command === "seekForward" || command === "keyboardSeekForward") return `+${stepSeconds}s`;
   if (command === "pictureInPicture" || command === "pip") return state.pipLabel || "";
   return "";
 };
@@ -959,6 +966,7 @@ const modalByName = {
   audio: audioModal,
   subtitles: subtitleModal,
   speed: speedModal,
+  shortcuts: shortcutsModal,
   sources: sourceModal,
   episodes: episodesModal,
   submitIntro: submitIntroModal,
@@ -1115,6 +1123,53 @@ const renderSpeedOptionList = () => {
     row.appendChild(labelElement);
     row.appendChild(buildCheckIcon());
     speedOptionList.appendChild(row);
+  });
+};
+
+const shortcutHelpRows = [
+  ["Space", "Play/pause (hold to speed up)"],
+  ["\u2190 / \u2192 or J / L", "Seek (hold Shift for fine seek)"],
+  ["\u2191 / \u2193", "Volume"],
+  ["+ - [ ]", "Playback speed"],
+  ["= or Shift+Z", "Reset speed to 1x"],
+  ["S", "Cycle subtitles"],
+  ["V", "Toggle subtitles"],
+  ["A", "Audio track menu"],
+  ["B", "Cycle audio track"],
+  ["G / H", "Subtitle delay -/+ 100 ms"],
+  [", / .", "Step one frame"],
+  ["Shift+A / Shift+C", "A-B loop set / clear"],
+  ["Enter / Z", "Skip intro or outro"],
+  ["Shift+N", "Next episode"],
+  ["Q", "Sources panel"],
+  ["E", "Episodes panel"],
+  ["`", "Speed menu"],
+  ["T", "Stream info"],
+  ["F / F11", "Fullscreen"],
+  ["P", "Picture-in-picture"],
+  ["X", "Stop"],
+  ["?", "Show this list"],
+];
+
+const renderShortcutsList = () => {
+  if (!shortcutsList) return;
+  if (shortcutsList.dataset.rendered === "1") return;
+  shortcutsList.dataset.rendered = "1";
+  shortcutHelpRows.forEach(([keys, action]) => {
+    const row = document.createElement("div");
+    row.className = "track-row";
+    const keyLabel = document.createElement("span");
+    keyLabel.className = "track-label";
+    keyLabel.textContent = keys;
+    const actionLabel = document.createElement("span");
+    actionLabel.className = "track-label";
+    actionLabel.style.opacity = "0.75";
+    actionLabel.style.marginLeft = "auto";
+    actionLabel.style.textAlign = "right";
+    actionLabel.textContent = action;
+    row.appendChild(keyLabel);
+    row.appendChild(actionLabel);
+    shortcutsList.appendChild(row);
   });
 };
 
@@ -2101,6 +2156,7 @@ const renderActiveModal = (modalOpened = false) => {
   if (activeModal === "audio") renderAudioTrackList();
   if (activeModal === "subtitles") renderSubtitleModal();
   if (activeModal === "speed") renderSpeedOptionList();
+  if (activeModal === "shortcuts") renderShortcutsList();
   if (activeModal === "sources") renderSourceModal(modalOpened);
   if (activeModal === "episodes") renderEpisodesModal(modalOpened);
   if (activeModal === "submitIntro") renderSubmitIntroModal();
@@ -2746,13 +2802,14 @@ const sendKeyboardVolume = delta => {
   const currentLevel = typeof state.volumeLevel === "number" && Number.isFinite(state.volumeLevel)
     ? state.volumeLevel
     : 1;
-  if (delta > 0 && currentLevel >= standardMaxVolumeLevel) {
+  const ceiling = volumeCeiling();
+  if (delta > 0 && currentLevel >= ceiling) {
     showPlayerToast(volumeToastLabel(delta));
     return;
   }
   const adjustedLevel = currentLevel + (delta * volumeStepLevel);
   const nextLevel = delta > 0
-    ? Math.min(standardMaxVolumeLevel, clampVolumeLevel(adjustedLevel))
+    ? Math.min(ceiling, clampVolumeLevel(adjustedLevel))
     : clampVolumeLevel(adjustedLevel);
   state.volumeLevel = nextLevel;
   if (nextLevel > 0) {
@@ -3190,7 +3247,7 @@ seek.addEventListener("change", () => {
 volumeSlider.addEventListener("input", event => {
   if (event && !event.isTrusted) return;
   noteChromeActivity();
-  const percent = Math.max(0, Math.min(maxVolumeLevel * 100, Number(volumeSlider.value) || 0));
+  const percent = Math.max(0, Math.min(volumeCeiling() * 100, Number(volumeSlider.value) || 0));
   const nextLevel = percent / 100;
   state.volumeLevel = nextLevel;
   if (nextLevel > 0) {
@@ -3882,6 +3939,15 @@ document.addEventListener("keydown", event => {
     }
     return;
   }
+  if (event.key === "?") {
+    event.preventDefault();
+    if (activeModal === "shortcuts") {
+      closePlayerModal(true);
+    } else if (!activeModal) {
+      openPlayerModal("shortcuts");
+    }
+    return;
+  }
 
   if (activeModal) {
     return;
@@ -3962,7 +4028,7 @@ document.addEventListener("keydown", event => {
   if (event.shiftKey && event.code === "ArrowUp") {
     event.preventDefault();
     const currentLevel = typeof state.volumeLevel === "number" && Number.isFinite(state.volumeLevel) ? state.volumeLevel : 1;
-    const nextLevel = Math.min(standardMaxVolumeLevel, clampVolumeLevel(currentLevel + 0.1));
+    const nextLevel = Math.min(volumeCeiling(), clampVolumeLevel(currentLevel + 0.1));
     state.volumeLevel = nextLevel;
     if (nextLevel > 0) preMuteVolumeLevel = nextLevel;
     syncVolumeControl();

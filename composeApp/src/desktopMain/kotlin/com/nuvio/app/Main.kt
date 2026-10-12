@@ -75,9 +75,10 @@ fun main(args: Array<String>) {
     installDesktopOpenUriHandler()
     handleDesktopLaunchArgs(args)
     preloadNativePlayerBridgeAsync()
-    // Load cached profile data synchronously so the profile color is available
-    // on the very first Compose frame (matching Android's SharedPreferences behavior).
-    ProfileRepository.loadCachedProfiles()
+    // Preload cached profile data on a background thread with a short bounded
+    // wait: a slow profile store never blocks window creation, while the first
+    // Compose frame usually still has the profile color.
+    preloadProfileCache(timeoutMs = 150L)
     AppIconRepository.ensureLoaded()
     DiscordPresenceManager.start()
 
@@ -287,6 +288,16 @@ fun main(args: Array<String>) {
             }
         }
     }
+}
+
+private fun preloadProfileCache(timeoutMs: Long) {
+    val thread = Thread(
+        { runCatching { ProfileRepository.loadCachedProfiles() } },
+        "nuvio-profile-preload",
+    )
+    thread.isDaemon = true
+    thread.start()
+    runCatching { thread.join(timeoutMs) }
 }
 
 private fun configureDesktopChrome() {

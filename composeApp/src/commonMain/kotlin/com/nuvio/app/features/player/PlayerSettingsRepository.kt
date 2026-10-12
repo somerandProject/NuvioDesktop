@@ -41,6 +41,8 @@ data class PlayerSettingsUiState(
     val resizeMode: PlayerResizeMode = PlayerResizeMode.Fit,
     val holdToSpeedEnabled: Boolean = true,
     val holdToSpeedValue: Float = 2f,
+    val volumeBoostEnabled: Boolean = false,
+    val keyboardSeekStepSeconds: Int = 10,
     val touchGesturesEnabled: Boolean = true,
     val externalPlayerEnabled: Boolean = false,
     val externalPlayerForwardSubtitles: Boolean = false,
@@ -124,6 +126,8 @@ object PlayerSettingsRepository {
     private var resizeMode = PlayerResizeMode.Fit
     private var holdToSpeedEnabled = true
     private var holdToSpeedValue = 2f
+    private var volumeBoostEnabled = false
+    private var keyboardSeekStepSeconds = 10
     private var touchGesturesEnabled = true
     private var externalPlayerEnabled = false
     private var externalPlayerForwardSubtitles = false
@@ -212,6 +216,8 @@ object PlayerSettingsRepository {
         resizeMode = PlayerResizeMode.Fit
         holdToSpeedEnabled = true
         holdToSpeedValue = 2f
+        volumeBoostEnabled = false
+        keyboardSeekStepSeconds = 10
         touchGesturesEnabled = true
         externalPlayerEnabled = false
         externalPlayerForwardSubtitles = false
@@ -296,6 +302,8 @@ object PlayerSettingsRepository {
             ?: PlayerResizeMode.Fit
         holdToSpeedEnabled = PlayerSettingsStorage.loadHoldToSpeedEnabled() ?: true
         holdToSpeedValue = PlayerSettingsStorage.loadHoldToSpeedValue() ?: 2f
+        volumeBoostEnabled = PlayerSettingsStorage.loadVolumeBoostEnabled() ?: false
+        keyboardSeekStepSeconds = PlayerSettingsStorage.loadKeyboardSeekStepSeconds() ?: 10
         touchGesturesEnabled = PlayerSettingsStorage.loadTouchGesturesEnabled() ?: true
         externalPlayerEnabled = if (AppFeaturePolicy.externalPlayerSupported) {
             PlayerSettingsStorage.loadExternalPlayerEnabled() ?: false
@@ -520,6 +528,28 @@ object PlayerSettingsRepository {
         holdToSpeedValue = normalized
         publish()
         PlayerSettingsStorage.saveHoldToSpeedValue(normalized)
+    }
+
+    fun setVolumeBoostEnabled(enabled: Boolean) {
+        ensureLoaded()
+        if (volumeBoostEnabled == enabled) return
+        volumeBoostEnabled = enabled
+        publish()
+        PlayerSettingsStorage.saveVolumeBoostEnabled(enabled)
+    }
+
+    fun setKeyboardSeekStepSeconds(seconds: Int) {
+        ensureLoaded()
+        val normalized = when {
+            seconds <= 7 -> 5
+            seconds <= 12 -> 10
+            seconds <= 20 -> 15
+            else -> 30
+        }
+        if (keyboardSeekStepSeconds == normalized) return
+        keyboardSeekStepSeconds = normalized
+        publish()
+        PlayerSettingsStorage.saveKeyboardSeekStepSeconds(normalized)
     }
 
     fun setTouchGesturesEnabled(enabled: Boolean) {
@@ -1189,6 +1219,8 @@ object PlayerSettingsRepository {
             resizeMode = resizeMode,
             holdToSpeedEnabled = holdToSpeedEnabled,
             holdToSpeedValue = holdToSpeedValue,
+            volumeBoostEnabled = volumeBoostEnabled,
+            keyboardSeekStepSeconds = keyboardSeekStepSeconds,
             touchGesturesEnabled = touchGesturesEnabled,
             externalPlayerEnabled = externalPlayerEnabled && AppFeaturePolicy.externalPlayerSupported,
             externalPlayerForwardSubtitles = externalPlayerForwardSubtitles && AppFeaturePolicy.externalPlayerSupported,

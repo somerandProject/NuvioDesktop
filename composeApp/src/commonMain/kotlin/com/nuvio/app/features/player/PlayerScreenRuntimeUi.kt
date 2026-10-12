@@ -382,6 +382,8 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         showEpisodes = isSeries,
         showExternalPlayer = args.onOpenInExternalPlayer != null,
         durationMs = playbackDurationMs,
+        volumeBoostEnabled = playerSettingsUiState.volumeBoostEnabled,
+        keyboardSeekStepSeconds = playerSettingsUiState.keyboardSeekStepSeconds,
         sourceIsLoading = sourceStreamsState.isAnyLoading,
         sourceFilters = sourceFilters,
         sourceItems = sourceItems,
@@ -665,8 +667,8 @@ private fun PlayerScreenRuntime.RenderPlayerControls(isEpisode: Boolean) {
             },
             onBack = { requestBack() },
             onTogglePlayback = { togglePlayback() },
-            onSeekBack = { seekBy(-10_000L) },
-            onSeekForward = { seekBy(10_000L) },
+            onSeekBack = { seekBy(-(playerSettingsUiState.keyboardSeekStepSeconds * 1000L)) },
+            onSeekForward = { seekBy(playerSettingsUiState.keyboardSeekStepSeconds * 1000L) },
             onResizeModeClick = { cycleResizeMode() },
             onSpeedClick = { cyclePlaybackSpeed() },
             onSubtitleClick = {
@@ -814,6 +816,7 @@ private fun PlayerScreenRuntime.requestBack() {
 
 private fun PlayerScreenRuntime.handlePlayerControlsAction(action: PlayerControlsAction): Boolean {
     playerControlsLog.d { "action=$action ${playerControlLogContext()}" }
+    val seekStepMs = playerSettingsUiState.keyboardSeekStepSeconds * 1000L
     when (action) {
         PlayerControlsAction.ToggleChrome -> {
             if (playerControlsLocked) {
@@ -833,19 +836,19 @@ private fun PlayerScreenRuntime.handlePlayerControlsAction(action: PlayerControl
             return false
         }
         PlayerControlsAction.SeekBack -> {
-            prepareSeekByForNativeFallback(-10_000L)
+            prepareSeekByForNativeFallback(-seekStepMs)
             return false
         }
         PlayerControlsAction.KeyboardSeekBack -> {
-            prepareSeekByForNativeFallback(-10_000L, revealControls = false)
+            prepareSeekByForNativeFallback(-seekStepMs, revealControls = false)
             return false
         }
         PlayerControlsAction.SeekForward -> {
-            prepareSeekByForNativeFallback(10_000L)
+            prepareSeekByForNativeFallback(seekStepMs)
             return false
         }
         PlayerControlsAction.KeyboardSeekForward -> {
-            prepareSeekByForNativeFallback(10_000L, revealControls = false)
+            prepareSeekByForNativeFallback(seekStepMs, revealControls = false)
             return false
         }
         PlayerControlsAction.KeyboardVolumeDown,

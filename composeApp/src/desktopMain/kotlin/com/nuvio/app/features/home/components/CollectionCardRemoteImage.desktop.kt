@@ -63,6 +63,10 @@ private val desktopGifHttpClient by lazy {
 
 private val downloadSemaphore = Semaphore(4)
 
+// Caps how many cards decode GIF frames concurrently so a shelf full of
+// always-animating cards doesn't saturate the UI thread with readPixels work.
+private val gifAnimationBudget = Semaphore(4)
+
 // Disk-persisted cache of raw gif bytes, so a gif that was ever hovered doesn't need to hit
 // the network again on the next app launch - only the very first hover ever pays network cost.
 private val gifDiskCacheDir: Path by lazy {
@@ -292,6 +296,7 @@ internal actual fun CollectionCardRemoteImage(
 
             if (singleBitmap != null) {
                 LaunchedEffect(imageUrl, currentHolder, singleBitmap, fullBitmap) {
+                    gifAnimationBudget.withPermit {
                     while (true) {
                         try {
                             if (currentHolder.needsScale && fullBitmap != null) {
@@ -318,6 +323,7 @@ internal actual fun CollectionCardRemoteImage(
                         val delayMs = currentHolder.frameDelaysMs.getOrElse(frameIndex) { 100L }
                         delay(delayMs)
                         frameIndex = (frameIndex + 1) % currentHolder.frameDelaysMs.size
+                    }
                     }
                 }
             }

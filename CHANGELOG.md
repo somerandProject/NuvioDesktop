@@ -6,6 +6,19 @@ project; all original work is credited there.
 
 ## 0.3-alpha
 
+- **Performance**: second pass after the polling overhaul — the native
+  controls bridge now also skips WebView pushes entirely while paused with
+  nothing changed, log lines are queued to a background writer thread (no
+  more disk I/O on playback/UI threads), GIF card animations share a global
+  decode budget of 4 concurrent loops, and the profile store preloads with a
+  bounded 150 ms wait instead of blocking window creation.
+- **Volume boost**: new **Settings → Playback → Volume Boost** toggle (off by
+  default) raises the player volume ceiling from 100% to 200% for the wheel,
+  `Shift`+arrows, and the slider.
+- **Seek step**: new **Settings → Playback → Seek Step** (5 / 10 / 15 / 30
+  seconds, default 10) applies to the arrow keys, `J`/`L`, the seek buttons,
+  and the seek toasts.
+- **Player**: press `?` for an in-player keyboard shortcut cheat-sheet.
 - **Performance**: playback polling overhaul — the native controls bridge only
   rebuilds and re-injects track lists when they change, the Kotlin audio-track
   poll is throttled, position ticks no longer rebuild the full player controls

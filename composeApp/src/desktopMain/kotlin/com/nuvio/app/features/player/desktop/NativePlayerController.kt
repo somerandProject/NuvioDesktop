@@ -17,6 +17,7 @@ import com.nuvio.app.features.player.PlayerControlsState
 import com.nuvio.app.features.player.PlayerEngineController
 import com.nuvio.app.features.player.PlayerPlaybackSnapshot
 import com.nuvio.app.features.player.PlayerResizeMode
+import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.player.SUBTITLE_DELAY_MAX_MS
 import com.nuvio.app.features.player.findPreferredAudioTrackIndex
 import com.nuvio.app.features.player.SUBTITLE_DELAY_MIN_MS
@@ -580,9 +581,9 @@ internal class NativePlayerController(
                 }
             }
             PlayerControlsAction.SeekBack,
-            PlayerControlsAction.KeyboardSeekBack -> fallbackSeekBy(-10_000L)
+            PlayerControlsAction.KeyboardSeekBack -> fallbackSeekBy(-keyboardSeekStepMs)
             PlayerControlsAction.SeekForward,
-            PlayerControlsAction.KeyboardSeekForward -> fallbackSeekBy(10_000L)
+            PlayerControlsAction.KeyboardSeekForward -> fallbackSeekBy(keyboardSeekStepMs)
             PlayerControlsAction.KeyboardVolumeDown -> adjustFallbackVolume(-10f)
             PlayerControlsAction.KeyboardVolumeUp -> adjustFallbackVolume(10f)
             PlayerControlsAction.PictureInPicture -> togglePictureInPictureFromShortcut()
@@ -645,6 +646,9 @@ internal class NativePlayerController(
         controlsState = controlsState.copy(volumeLevel = level)
         log.d { "applied remembered volume level=$level handle=$current" }
     }
+
+    private val keyboardSeekStepMs: Long
+        get() = PlayerSettingsRepository.uiState.value.keyboardSeekStepSeconds * 1000L
 
     private fun fallbackSeekBy(offsetMs: Long) {
         val current = handle
@@ -1507,6 +1511,10 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean): String =
         appendJsonField("showExternalPlayer", showExternalPlayer)
         append(',')
         appendJsonField("durationMs", durationMs)
+        append(',')
+        appendJsonField("volumeBoostEnabled", volumeBoostEnabled)
+        append(',')
+        appendJsonField("keyboardSeekStepSeconds", keyboardSeekStepSeconds)
         append(',')
         appendJsonField("sourceIsLoading", sourceIsLoading)
         append(',')

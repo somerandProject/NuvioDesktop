@@ -1408,6 +1408,11 @@ private:
     std::string cachedAudioTracksJson = "[]";
     std::string cachedSubtitleTracksJson = "[]";
     std::string cachedTracksSignature;
+    double cachedControlsDuration = -1.0;
+    double cachedControlsPosition = -1.0;
+    double cachedControlsVolumeLevel = -1.0;
+    int cachedControlsPaused = -1;
+    int cachedControlsLoading = -1;
 
     friend LRESULT CALLBACK messageWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
     friend LRESULT CALLBACK containerWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -1873,7 +1878,7 @@ private:
         webView->ExecuteScript(script.c_str(), nullptr);
     }
 
-    void syncControls() {
+    void syncControls(bool force = false) {
         if (!webView) return;
         double duration = doubleProperty("duration", 0.0);
         double position = doubleProperty("time-pos", 0.0);
@@ -1883,11 +1888,23 @@ private:
         std::string tracksSignature = stringProperty("track-list/count", "") + std::string("|") +
             stringProperty("aid", "") + "|" + stringProperty("sid", "");
         bool tracksChanged = tracksSignature != cachedTracksSignature || tracksSignature.empty();
+        bool scalarsChanged = force ||
+            duration != cachedControlsDuration ||
+            position != cachedControlsPosition ||
+            volumeLevel != cachedControlsVolumeLevel ||
+            paused != (cachedControlsPaused == 1) ||
+            loading != (cachedControlsLoading == 1);
+        if (!scalarsChanged && !tracksChanged) return;
         if (tracksChanged) {
             cachedAudioTracksJson = audioTracksJson();
             cachedSubtitleTracksJson = subtitleTracksJson();
             cachedTracksSignature = tracksSignature;
         }
+        cachedControlsDuration = duration;
+        cachedControlsPosition = position;
+        cachedControlsVolumeLevel = volumeLevel;
+        cachedControlsPaused = paused ? 1 : 0;
+        cachedControlsLoading = loading ? 1 : 0;
 
         std::ostringstream script;
         script << "window.playerUpdate({duration:" << duration
@@ -1895,7 +1912,7 @@ private:
                << ",volumeLevel:" << volumeLevel
                << ",paused:" << (paused ? "true" : "false")
                << ",loading:" << (loading ? "true" : "false");
-        if (tracksChanged) {
+        if (tracksChanged || force) {
             script << ",audioTracks:" << cachedAudioTracksJson
                    << ",subtitleTracks:" << cachedSubtitleTracksJson;
         }
@@ -1912,17 +1929,17 @@ private:
         if (type == "controlsReady") {
             controlsWebReady.store(true);
             flushPendingControlsJsonIfReady();
-            syncControls();
+            syncControls(true);
             return;
         }
         if (type == "selectAudioTrack") {
             selectAudioTrackId((int)std::llround(value));
-            syncControls();
+            syncControls(true);
             return;
         }
         if (type == "selectSubtitleTrack") {
             selectSubtitleTrackId((int)std::llround(value));
-            syncControls();
+            syncControls(true);
             return;
         }
         if (type == "setPlaybackState" || type == "setPlaybackStateQuiet") {

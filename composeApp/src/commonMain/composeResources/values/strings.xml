@@ -1154,6 +1154,10 @@
     <string name="settings_playback_hold_speed">Hold Speed</string>
     <string name="settings_playback_hold_to_speed">Hold To Speed</string>
     <string name="settings_playback_hold_to_speed_description">Long-press anywhere on the player surface to temporarily boost playback speed.</string>
+    <string name="settings_playback_volume_boost">Volume Boost</string>
+    <string name="settings_playback_volume_boost_description">Allow the player volume to go above 100% up to 200% with the wheel, keys, and slider.</string>
+    <string name="settings_playback_seek_step">Seek Step</string>
+    <string name="settings_playback_seek_step_description">Arrow keys and seek buttons jump %1$d seconds.</string>
     <string name="settings_playback_touch_gestures">Touch Gestures</string>
     <string name="settings_playback_touch_gestures_description">Allow swipes and double-taps on the player surface to seek, adjust brightness, or adjust volume.</string>
     <string name="settings_playback_invalid_regex_pattern">Invalid regex pattern</string>

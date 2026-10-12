@@ -513,6 +513,36 @@ private fun PlaybackSettingsSection(
                             onClick = { showHoldToSpeedValueDialog = true },
                         )
                     }
+                    if (isDesktop) {
+                        SettingsGroupDivider(isTablet = isTablet)
+                        SettingsSwitchRow(
+                            title = stringResource(Res.string.settings_playback_volume_boost),
+                            description = stringResource(Res.string.settings_playback_volume_boost_description),
+                            checked = autoPlayPlayerSettings.volumeBoostEnabled,
+                            isTablet = isTablet,
+                            onCheckedChange = PlayerSettingsRepository::setVolumeBoostEnabled,
+                        )
+                        SettingsGroupDivider(isTablet = isTablet)
+                        SettingsNavigationRow(
+                            title = stringResource(Res.string.settings_playback_seek_step),
+                            description = stringResource(
+                                Res.string.settings_playback_seek_step_description,
+                                autoPlayPlayerSettings.keyboardSeekStepSeconds,
+                            ),
+                            isTablet = isTablet,
+                            onClick = {
+                                val current = autoPlayPlayerSettings.keyboardSeekStepSeconds
+                                PlayerSettingsRepository.setKeyboardSeekStepSeconds(
+                                    when (current) {
+                                        5 -> 10
+                                        10 -> 15
+                                        15 -> 30
+                                        else -> 5
+                                    },
+                                )
+                            },
+                        )
+                    }
                 }
             }
         }

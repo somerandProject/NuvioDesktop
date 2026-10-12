@@ -46,6 +46,7 @@ entry, so installing or updating it will **not** touch your official Nuvio insta
 | `T` | Stream info |
 | `X` | Stop |
 | `P` | Picture-in-picture |
+| `?` | Show the keyboard shortcut list |
 
 ## Get NuvioDev
 
