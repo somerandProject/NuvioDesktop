@@ -21,8 +21,9 @@ class DebridPendingDeviceAuthExpiryTest {
             savedAtEpochMs = null,
         )
 
-        assertFalse(isDebridDeviceAuthorizationExpired(session, nowEpochMs = 1_700_000_000_000L))
-        assertTrue(isDebridDeviceAuthorizationExpired(session, nowEpochMs = 1_700_000_000_000L + 60_000L))
+        // 2026-01-01T00:00:00Z == 1_767_225_600_000 epoch ms.
+        assertFalse(isDebridDeviceAuthorizationExpired(session, nowEpochMs = 1_767_225_000_000L))
+        assertTrue(isDebridDeviceAuthorizationExpired(session, nowEpochMs = 1_767_225_700_000L))
     }
 
     @Test
@@ -62,7 +63,8 @@ class DebridPendingDeviceAuthExpiryTest {
 
     @Test
     fun `missing or blank expiry never expires`() {
-        assertFalse(isDebridDeviceAuthorizationExpired(session("600s", 1_000L), nowEpochMs = 9_999_999_999L))
+        // A relative lifetime without a saved timestamp cannot be evaluated.
+        assertFalse(isDebridDeviceAuthorizationExpired(session("600s", null), nowEpochMs = 9_999_999_999L))
         assertFalse(isDebridDeviceAuthorizationExpired(session(null, null), nowEpochMs = 1_000L))
         assertFalse(isDebridDeviceAuthorizationExpired(session("   ", null), nowEpochMs = 1_000L))
     }
