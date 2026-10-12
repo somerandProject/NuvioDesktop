@@ -96,8 +96,13 @@ jobs:
         shell: bash
         # Runs the common + desktop JVM test suites (updater, tracking auth,
         # routing, etc.). Gates the release below so a broken build never
-        # ships to the in-app updater channel.
-        run: ./gradlew :composeApp:desktopTest --no-configuration-cache --stacktrace
+        # ships to the in-app updater channel. The Linux native player bridges
+        # are runtime-only artifacts and are skipped here.
+        run: >-
+          ./gradlew :composeApp:desktopTest
+          -x :composeApp:buildLinuxPlayerBridge
+          -x :composeMediaPlayer:buildNativeLinux
+          --no-configuration-cache --stacktrace
 
   windows:
     name: Windows x64
