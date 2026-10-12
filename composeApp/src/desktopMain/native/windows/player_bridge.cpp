@@ -1731,10 +1731,13 @@ private:
             setMpvOptionStringLocked("deband", "yes");
             setMpvOptionStringLocked("scale", "spline36");
             setMpvOptionStringLocked("cscale", "spline36");
-            setMpvOptionStringLocked("demuxer-max-bytes", "512MiB");
-            setMpvOptionStringLocked("demuxer-max-back-bytes", "256MiB");
+            setMpvOptionStringLocked("demuxer-max-bytes", "150MiB");
+            setMpvOptionStringLocked("demuxer-max-back-bytes", "50MiB");
             setMpvOptionStringLocked("demuxer-seekable-cache", "yes");
-            setMpvOptionStringLocked("cache-secs", "36000");
+            setMpvOptionStringLocked(
+                "stream-lavf-o",
+                "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=%23%408,429,500,502,503,504,reconnect_delay_max=15"
+            );
             setMpvOptionStringLocked("hr-seek", "no");
             std::string shaderCacheDirectory = mpvShaderCacheDirectory();
             if (!shaderCacheDirectory.empty()) {
