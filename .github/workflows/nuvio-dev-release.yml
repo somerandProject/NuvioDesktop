@@ -428,17 +428,32 @@ jobs:
           set -euo pipefail
           # A versioned (prerelease) release per Dev build gives history and
           # rollback; the rolling release below always points at the newest.
+          # Assets are uploaded separately with --clobber: uploading during
+          # "gh release create" is not idempotent (a retried asset upload
+          # fails with "ReleaseAsset.name already exists").
           if gh release view "${ROLLING_VERSION}" >/dev/null 2>&1; then
-            gh release upload "${ROLLING_VERSION}" dist/* --clobber
             gh release edit "${ROLLING_VERSION}" \
               --title "NuvioDev ${ROLLING_VERSION}" --notes-file release-notes.md
           else
-            gh release create "${ROLLING_VERSION}" dist/* \
+            gh release create "${ROLLING_VERSION}" \
               --title "NuvioDev ${ROLLING_VERSION}" \
               --notes-file release-notes.md \
               --prerelease \
               --latest=false
           fi
+          upload_with_retry() {
+            local tag="$1"
+            local attempt
+            for attempt in 1 2 3; do
+              if gh release upload "${tag}" dist/* --clobber; then
+                return 0
+              fi
+              echo "Asset upload attempt ${attempt} failed for ${tag}; retrying..." >&2
+              sleep 10
+            done
+            return 1
+          }
+          upload_with_retry "${ROLLING_VERSION}"
 
       - name: Refresh rolling latest release
         run: |
@@ -452,11 +467,23 @@ jobs:
               --jq '.assets[].id' | while read -r id; do
                 [ -n "${id}" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" || true
               done
-            gh release upload nuvio-dev-latest dist/* --clobber
             gh release edit nuvio-dev-latest --title "NuvioDev ${ROLLING_VERSION}" --notes-file release-notes.md --latest
           else
-            gh release create nuvio-dev-latest dist/* \
+            gh release create nuvio-dev-latest \
               --title "NuvioDev ${ROLLING_VERSION}" \
               --notes-file release-notes.md \
               --latest
           fi
+          upload_with_retry() {
+            local tag="$1"
+            local attempt
+            for attempt in 1 2 3; do
+              if gh release upload "${tag}" dist/* --clobber; then
+                return 0
+              fi
+              echo "Asset upload attempt ${attempt} failed for ${tag}; retrying..." >&2
+              sleep 10
+            done
+            return 1
+          }
+          upload_with_retry nuvio-dev-latest
