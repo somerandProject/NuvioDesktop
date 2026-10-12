@@ -25,9 +25,9 @@ class DebridProviderTest {
     }
 
     @Test
-    fun `real debrid stays hidden from local addon capability paths`() {
+    fun `real debrid exposes only api key client resolve`() {
+        assertTrue(DebridProviders.RealDebrid.visibleInUi)
         assertTrue(DebridProviders.RealDebrid.authMethod == DebridProviderAuthMethod.ApiKey)
-        assertFalse(DebridProviders.RealDebrid.visibleInUi)
         assertTrue(DebridProviders.RealDebrid.supports(DebridProviderCapability.ClientResolve))
         assertFalse(DebridProviders.RealDebrid.supports(DebridProviderCapability.LocalTorrentCacheCheck))
         assertFalse(DebridProviders.RealDebrid.supports(DebridProviderCapability.LocalTorrentResolve))

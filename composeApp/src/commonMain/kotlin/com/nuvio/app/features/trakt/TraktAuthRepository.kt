@@ -32,6 +32,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.StringResource
@@ -962,4 +963,10 @@ private data class TraktUserDto(
 private data class TraktUserIdsDto(
     val slug: String? = null,
 )
-    private fun localizedString(resource: StringResource): String = runBlocking { getString(resource) }
+    // Resource lookups are suspend-only; caching after the first blocking
+    // fetch keeps the device-polling loop from re-running runBlocking on
+    // every publish call.
+    private val localizedStringCache = ConcurrentHashMap<StringResource, String>()
+
+    private fun localizedString(resource: StringResource): String =
+        localizedStringCache.getOrPut(resource) { runBlocking { getString(resource) } }

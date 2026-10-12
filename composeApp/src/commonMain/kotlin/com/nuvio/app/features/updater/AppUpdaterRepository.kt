@@ -27,6 +27,7 @@ internal data class GitHubAssetDto(
     @SerialName("browser_download_url") val browserDownloadUrl: String,
     val size: Long? = null,
     @SerialName("content_type") val contentType: String? = null,
+    val digest: String? = null,
 )
 
 internal class NoChannelReleaseException : IllegalStateException()
@@ -36,7 +37,21 @@ internal data class AppUpdateAssetCandidate(
     val downloadUrl: String,
     val size: Long? = null,
     val contentType: String? = null,
+    val sha256: String? = null,
 )
+
+// GitHub reports release-asset digests as "<algorithm>:<hex>"; anything else
+// (missing, unprefixed, unknown algorithm) is treated as unverifiable so the
+// download never fails on a release that simply does not carry a digest.
+internal fun parseGitHubAssetDigest(digest: String?): String? =
+    digest
+        ?.takeIf { it.startsWith("sha256:", ignoreCase = true) }
+        ?.substringAfter(':')
+        ?.trim()
+        ?.lowercase()
+        ?.takeIf { hex ->
+            hex.length == 64 && hex.all { it in '0'..'9' || it in 'a'..'f' }
+        }
 
 internal fun selectBestUpdateAsset(
     assets: List<AppUpdateAssetCandidate>,
@@ -124,6 +139,7 @@ internal object AppUpdaterRepository {
                         downloadUrl = candidate.browserDownloadUrl,
                         size = candidate.size,
                         contentType = candidate.contentType,
+                        sha256 = parseGitHubAssetDigest(candidate.digest),
                     )
                 },
                 selector = selector,
@@ -149,6 +165,7 @@ internal object AppUpdaterRepository {
                 assetName = asset.name,
                 assetUrl = asset.downloadUrl,
                 assetSizeBytes = asset.size,
+                assetSha256 = asset.sha256,
             )
         }
     }

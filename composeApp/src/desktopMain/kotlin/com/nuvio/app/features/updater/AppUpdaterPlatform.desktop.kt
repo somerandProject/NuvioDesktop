@@ -2,12 +2,15 @@ package com.nuvio.app.features.updater
 
 import com.nuvio.app.core.build.AppVersionConfig
 import com.nuvio.app.core.storage.DesktopStorage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.updates_download_failed
 import nuvio.composeapp.generated.resources.updates_download_failed_http
+import nuvio.composeapp.generated.resources.updates_download_failed_checksum
 import nuvio.composeapp.generated.resources.updates_downloaded_file_missing
 import nuvio.composeapp.generated.resources.updates_empty_download_body
 import org.jetbrains.compose.resources.getString
@@ -17,6 +20,7 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.security.MessageDigest
 import java.time.Duration
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -31,6 +35,8 @@ private const val desktopUpdaterPreferencesName = "nuvio_dev_updater"
 private const val ignoredTagKey = "ignored_release_tag"
 private const val updateChannelKey = "update_channel"
 private const val lastSeenVersionKey = "last_seen_version"
+private const val MAX_DOWNLOAD_ATTEMPTS = 3
+private const val DOWNLOAD_RETRY_BASE_DELAY_MS = 2_000L
 
 private val desktopUpdaterHttpClient: HttpClient = HttpClient.newBuilder()
     .connectTimeout(Duration.ofSeconds(60))
@@ -93,9 +99,25 @@ actual object AppUpdaterPlatform {
         File(path).delete()
     }
 
+    // Only transport-level failures and server-side trouble are worth a retry;
+    // a 404 or checksum mismatch would fail again identically.
+    private fun isRetryableDownloadError(error: Throwable): Boolean {
+        val causes = generateSequence<Throwable>(error) { it.cause }
+            .take(10)
+            .toList()
+        if (causes.any { it is java.io.IOException }) return true
+        val message = causes.joinToString(separator = " ") { it.message.orEmpty() }.lowercase()
+        val statusCode = Regex("\\b(\\d{3})\\b").findAll(message)
+            .mapNotNull { it.groupValues[1].toIntOrNull() }
+            .firstOrNull()
+            ?: return false
+        return statusCode == 429 || statusCode in 500..599
+    }
+
     actual suspend fun downloadUpdateAsset(
         assetUrl: String,
         assetName: String,
+        expectedSha256: String?,
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
@@ -104,48 +126,100 @@ actual object AppUpdaterPlatform {
             val destination = File(updatesDir(), safeName)
             val tempFile = File(updatesDir(), "$safeName.part")
 
-            val request = HttpRequest.newBuilder()
-                .uri(URI(assetUrl))
-                .GET()
-                .build()
-            val response = desktopUpdaterHttpClient.send(request, HttpResponse.BodyHandlers.ofInputStream())
-            if (response.statusCode() !in 200..299) {
-                error(runBlocking { getString(Res.string.updates_download_failed_http, response.statusCode()) })
-            }
-
-            val totalBytes = response.headers().firstValue("Content-Length").orElse(null)
-                ?.toLongOrNull()
-                ?.takeIf { it > 0L }
-            var downloadedBytes = 0L
-            try {
-                response.body()?.use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read <= 0) break
-                            output.write(buffer, 0, read)
-                            downloadedBytes += read.toLong()
-                            onProgress(downloadedBytes, totalBytes)
-                        }
-                        output.flush()
+            // Release-asset CDN connections fail intermittently (observed with
+            // "Unable to connect to the remote server" against
+            // release-assets.githubusercontent.com), so a single-shot download
+            // turns a transient blip into a failed update. Retry with backoff;
+            // each attempt starts the file over, which is fine for a ~190 MB MSI.
+            var lastError: Throwable? = null
+            for (attempt in 0 until MAX_DOWNLOAD_ATTEMPTS) {
+                if (attempt > 0) {
+                    onProgress(0L, null)
+                    delay(DOWNLOAD_RETRY_BASE_DELAY_MS * attempt)
+                }
+                try {
+                    downloadOnce(assetUrl, tempFile, onProgress)
+                    verifyChecksum(tempFile, expectedSha256)
+                    if (!tempFile.renameTo(destination)) {
+                        tempFile.copyTo(destination, overwrite = true)
+                        tempFile.delete()
                     }
-                } ?: error(runBlocking { getString(Res.string.updates_empty_download_body) })
-
-                if (totalBytes != null && downloadedBytes != totalBytes) {
-                    error(runBlocking { getString(Res.string.updates_download_failed) })
-                }
-
-                if (!tempFile.renameTo(destination)) {
-                    tempFile.copyTo(destination, overwrite = true)
+                    return@runCatching destination.absolutePath
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (t: Throwable) {
                     tempFile.delete()
+                    lastError = t
+                    if (attempt == MAX_DOWNLOAD_ATTEMPTS - 1 || !isRetryableDownloadError(t)) throw t
                 }
-                destination.absolutePath
-            } catch (t: Throwable) {
-                if (tempFile.exists()) tempFile.delete()
-                throw t
+            }
+            throw lastError ?: IllegalStateException("Download did not produce a file")
+        }
+    }
+
+    private suspend fun downloadOnce(
+        assetUrl: String,
+        tempFile: File,
+        onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
+    ) {
+        val request = HttpRequest.newBuilder()
+            .uri(URI(assetUrl))
+            .GET()
+            .build()
+        val response = desktopUpdaterHttpClient.send(request, HttpResponse.BodyHandlers.ofInputStream())
+        if (response.statusCode() !in 200..299) {
+            error(getString(Res.string.updates_download_failed_http, response.statusCode()))
+        }
+
+        val totalBytes = response.headers().firstValue("Content-Length").orElse(null)
+            ?.toLongOrNull()
+            ?.takeIf { it > 0L }
+        var downloadedBytes = 0L
+        try {
+            response.body()?.use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        output.write(buffer, 0, read)
+                        downloadedBytes += read.toLong()
+                        onProgress(downloadedBytes, totalBytes)
+                    }
+                    output.flush()
+                }
+            } ?: error(getString(Res.string.updates_empty_download_body))
+
+            if (totalBytes != null && downloadedBytes != totalBytes) {
+                error(getString(Res.string.updates_download_failed))
+            }
+        } catch (t: Throwable) {
+            if (tempFile.exists()) tempFile.delete()
+            throw t
+        }
+    }
+
+    // A missing digest skips verification (older releases have none); a
+    // present-but-different digest always fails the download.
+    private fun verifyChecksum(file: File, expectedSha256: String?) {
+        if (expectedSha256.isNullOrBlank()) return
+        val actual = sha256Hex(file)
+        if (!actual.equals(expectedSha256, ignoreCase = true)) {
+            error(getString(Res.string.updates_download_failed_checksum))
+        }
+    }
+
+    private fun sha256Hex(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
             }
         }
+        return digest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
     }
 
     actual fun canInstallDownloadedUpdate(): Boolean = true

@@ -29,6 +29,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.util.concurrent.ConcurrentHashMap
 
 private const val BASE_URL = "https://api.trakt.tv"
 private const val WATCHLIST_KEY = "trakt:watchlist"
@@ -811,7 +812,12 @@ object TraktLibraryRepository {
         return addCount > 0 || existingCount > 0
     }
 
-    private fun localizedString(resource: StringResource): String = runBlocking { getString(resource) }
+    // Resource lookups are suspend-only; cache after the first blocking fetch
+    // so repeated publishes never re-run runBlocking.
+    private val localizedStringCache = ConcurrentHashMap<StringResource, String>()
+
+    private fun localizedString(resource: StringResource): String =
+        localizedStringCache.getOrPut(resource) { runBlocking { getString(resource) } }
 
     private fun errorMessageForStatus(status: Int, defaultMessage: String): String =
         when (status) {

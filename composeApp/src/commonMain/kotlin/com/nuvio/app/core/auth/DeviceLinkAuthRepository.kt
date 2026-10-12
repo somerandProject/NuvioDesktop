@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import com.nuvio.app.core.network.ServerConfiguration
 import com.nuvio.app.core.network.ServerConfigurationRepository
 import com.nuvio.app.core.network.SupabaseProvider
+import com.nuvio.app.isDesktop
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.user.UserInfo
 import io.github.jan.supabase.auth.user.UserSession
@@ -107,7 +108,7 @@ object DeviceLinkAuthRepository {
             put("p_device_nonce", nonce)
             put("p_redirect_base_url", configuration.deviceLinkUrl())
             put("p_device_name", deviceName)
-            put("p_device_type", "mobile")
+            put("p_device_type", if (isDesktop) "desktop" else "mobile")
         }
         return SupabaseProvider.client.postgrest
             .rpc("start_device_login_session", params)

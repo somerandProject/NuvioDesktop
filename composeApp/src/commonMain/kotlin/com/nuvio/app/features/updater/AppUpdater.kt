@@ -28,6 +28,7 @@ data class AppUpdate(
     val assetName: String,
     val assetUrl: String,
     val assetSizeBytes: Long?,
+    val assetSha256: String? = null,
 )
 
 data class AppUpdaterUiState(
@@ -216,6 +217,7 @@ class AppUpdaterController internal constructor(
             val result = AppUpdaterPlatform.downloadUpdateAsset(
                 assetUrl = update.assetUrl,
                 assetName = update.assetName,
+                expectedSha256 = update.assetSha256,
             ) { downloadedBytes, totalBytes ->
                 downloadContext.ensureActive()
                 val progress = if (totalBytes != null && totalBytes > 0L) {

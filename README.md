@@ -63,6 +63,46 @@ git clone https://github.com/somerandProject/NuvioDesktop.git
 cd NuvioDesktop
 ```
 
+Prerequisites for the Windows MSI:
+
+1. **JDK 21** (Temurin) — its jpackage generates per-product MSI component
+   GUIDs; older JDKs collide with the official Nuvio install.
+2. **Windows runtime files** are stored in Git LFS. Pull them once:
+
+   ```bash
+   git lfs pull --include="composeApp/src/desktopMain/native/windows/runtime/**"
+   ```
+
+3. **WebView2 SDK** — install locally with nuget and pass the directory to
+   Gradle:
+
+   ```powershell
+   nuget install Microsoft.Web.WebView2 -Version 1.0.4078.44 -OutputDirectory "$env:RUNNER_TEMP\nuget"
+   .\gradlew.bat :composeApp:packageReleaseMsi `
+     "-Pnuvio.webview2.dir=$env:RUNNER_TEMP\nuget\Microsoft.Web.WebView2.1.0.4078.44"
+   ```
+
+### `local.properties` keys
+
+Runtime config values are injected at build time from `local.properties` (or
+environment variables). Without them the app falls back to the official
+backend for sign-in and TMDB, but tracking providers are disabled:
+
+| Key | Purpose |
+| --- | --- |
+| `NUVIO_SUPABASE_URL` / `NUVIO_SUPABASE_ANON_KEY` | Nuvio account backend (falls back to the official endpoint) |
+| `NUVIO_SUPABASE_FALLBACK_URL` | Secondary backend used when the primary origin fails |
+| `TRAKT_CLIENT_ID` / `TRAKT_CLIENT_SECRET` | Trakt sign-in (device-code flow) |
+| `SIMKL_CLIENT_ID` | Simkl tracking |
+| `MDBLIST_CLIENT_ID` | MDBList tracking |
+| `PREMIUMIZE_CLIENT_ID` | Premiumize debrid device sign-in |
+| `TMDB_API_KEY` | TMDB metadata (official key used as fallback) |
+| `SENTRY_DSN` / `SENTRY_DESKTOP_DSN` | Crash reporting |
+
+CI consumes the same file, base64-encoded, via the
+`NUVIO_DESKTOP_LOCAL_PROPERTIES_BASE64` repository secret. If it is blank the
+release workflow fails with a clear error (sign-in would be baked in blank).
+
 Run the app:
 
 ```bash

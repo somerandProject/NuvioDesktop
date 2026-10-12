@@ -66,6 +66,34 @@ jobs:
           echo "rolling_version=${rolling_version}" >> "$GITHUB_OUTPUT"
           echo "tag=${version}" >> "$GITHUB_OUTPUT"
 
+  tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Configure local.properties
+        shell: bash
+        run: |
+          if [[ -n "${LOCAL_PROPERTIES_BASE64}" ]]; then
+            printf '%s' "${LOCAL_PROPERTIES_BASE64}" | base64 --decode > local.properties
+          else
+            touch local.properties
+          fi
+      - name: Run desktop unit tests
+        shell: bash
+        # Runs the common + desktop JVM test suites (updater, tracking auth,
+        # routing, etc.). Gates the release below so a broken build never
+        # ships to the in-app updater channel.
+        run: ./gradlew :composeApp:desktopTest --no-configuration-cache --stacktrace
+
   windows:
     name: Windows x64
     needs: metadata
@@ -100,6 +128,20 @@ jobs:
           else
             touch local.properties
           fi
+      - name: Validate local.properties
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -s local.properties ]]; then
+            echo "::error::local.properties is empty - the NUVIO_DESKTOP_LOCAL_PROPERTIES_BASE64 secret is missing or invalid. Auth and tracking config would be baked in blank (sign-in fails with connection refused)."
+            exit 1
+          fi
+          for key in NUVIO_SUPABASE_URL NUVIO_SUPABASE_ANON_KEY TRAKT_CLIENT_ID SIMKL_CLIENT_ID MDBLIST_CLIENT_ID; do
+            if ! grep -Eq "^${key}=..+" local.properties; then
+              echo "::error::local.properties is missing ${key} - re-encode and update the NUVIO_DESKTOP_LOCAL_PROPERTIES_BASE64 secret."
+              exit 1
+            fi
+          done
       - name: Install WebView2 SDK
         shell: pwsh
         run: |
@@ -139,7 +181,7 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [metadata, windows]
+    needs: [metadata, windows, tests]
     runs-on: ubuntu-latest
     permissions:
       contents: write

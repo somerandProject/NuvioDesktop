@@ -52,6 +52,7 @@ actual object AppUpdaterPlatform {
     actual suspend fun downloadUpdateAsset(
         assetUrl: String,
         assetName: String,
+        expectedSha256: String?,
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
     ): Result<String> = AndroidAppUpdaterPlatform.downloadUpdateAsset(assetUrl, assetName, onProgress)
 

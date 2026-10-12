@@ -55,6 +55,7 @@ import com.nuvio.app.features.debrid.DebridProvider
 import com.nuvio.app.features.debrid.DebridProviderApis
 import com.nuvio.app.features.debrid.DebridProviderAuthMethod
 import com.nuvio.app.features.debrid.DebridProviders
+import com.nuvio.app.features.debrid.isDebridDeviceAuthorizationExpired
 import com.nuvio.app.features.debrid.DebridSettings
 import com.nuvio.app.features.debrid.DebridSettingsRepository
 import com.nuvio.app.features.debrid.DebridSettingsStorage
@@ -1334,10 +1335,18 @@ private fun DebridDeviceAuthDialog(
         statusMessage = null
         if (restartNonce == 0) {
             loadPendingDeviceAuthorization(provider.id)?.let { pendingSession ->
-                session = pendingSession
-                isStarting = false
-                statusMessage = waitingMessage
-                return@LaunchedEffect
+                // A stale pending session (app restarted hours after the user
+                // abandoned the dialog) must not show as "Waiting for
+                // approval…" forever: drop it when the server-side expiry has
+                // passed and start a fresh sign-in instead.
+                if (isDebridDeviceAuthorizationExpired(pendingSession, nowEpochMs())) {
+                    clearPendingDeviceAuthorization(provider.id)
+                } else {
+                    session = pendingSession
+                    isStarting = false
+                    statusMessage = waitingMessage
+                    return@LaunchedEffect
+                }
             }
         }
         val startResult = runCatching {
@@ -1558,10 +1567,14 @@ private fun loadPendingDeviceAuthorization(providerId: String): DebridDeviceAuth
         }
         ?.takeIf { it.providerId == providerId }
 
+private fun nowEpochMs(): Long = kotlin.time.Clock.System.now().toEpochMilliseconds()
+
 private fun savePendingDeviceAuthorization(session: DebridDeviceAuthorization) {
     DebridSettingsStorage.savePendingDeviceAuthorization(
         providerId = session.providerId,
-        payload = debridDeviceAuthorizationJson.encodeToString(session),
+        payload = debridDeviceAuthorizationJson.encodeToString(
+            session.copy(savedAtEpochMs = nowEpochMs()),
+        ),
     )
 }
 

@@ -4,6 +4,7 @@ import com.nuvio.app.features.streams.StreamClientResolve
 import com.nuvio.app.features.streams.StreamItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
+import kotlin.time.Instant
 
 internal interface DebridProviderApi {
     val provider: DebridProvider
@@ -45,7 +46,35 @@ internal data class DebridDeviceAuthorization(
     val friendlyVerificationUrl: String,
     val intervalSeconds: Int,
     val expiresAt: String?,
+    // Set when the session is persisted so a relative lifetime like
+    // Premiumize's "600s" can be anchored to a point in time on restore.
+    val savedAtEpochMs: Long? = null,
 )
+
+// Torbox reports an absolute ISO-8601 expiry; Premiumize reports a relative
+// lifetime ("600s") that is only meaningful anchored to when the pending
+// session was saved. A margin is subtracted so an expired session is never
+// shown as "Waiting for approval…" to the user.
+internal fun debridDeviceAuthorizationExpiryEpochMs(
+    session: DebridDeviceAuthorization,
+): Long? {
+    val raw = session.expiresAt?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val relativeSeconds = Regex("^(\\d+)s$").find(raw)?.groupValues?.get(1)?.toLongOrNull()
+    if (relativeSeconds != null) {
+        return session.savedAtEpochMs?.let { savedAt -> savedAt + relativeSeconds * 1_000L }
+    }
+    return runCatching { Instant.parse(raw).toEpochMilliseconds() }.getOrNull()
+}
+
+internal fun isDebridDeviceAuthorizationExpired(
+    session: DebridDeviceAuthorization,
+    nowEpochMs: Long,
+): Boolean {
+    val expiryEpochMs = debridDeviceAuthorizationExpiryEpochMs(session) ?: return false
+    // Treat "within a minute of expiry" as already expired: the remaining
+    // approval window is too short to be worth showing.
+    return nowEpochMs >= expiryEpochMs - 30_000L
+}
 
 internal sealed interface DebridDeviceAuthorizationTokenResult {
     data class Authorized(val accessToken: String) : DebridDeviceAuthorizationTokenResult

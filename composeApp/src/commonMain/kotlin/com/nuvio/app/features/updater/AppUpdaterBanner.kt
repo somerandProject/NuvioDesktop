@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -314,6 +315,16 @@ private fun AppUpdateBanner(
             }
 
             if (!state.isDownloading && !debugTestComplete) {
+                if (state.errorMessage != null && !update.releaseUrl.isNullOrBlank()) {
+                    val uriHandler = LocalUriHandler.current
+                    Button(
+                        onClick = { runCatching { uriHandler.openUri(update.releaseUrl!!) } },
+                        modifier = Modifier.heightIn(min = 40.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Text(stringResource(Res.string.action_open_page))
+                    }
+                }
                 Button(
                     onClick = if (state.downloadedUpdatePath != null) onInstall else onDownload,
                     enabled = state.downloadedUpdatePath != null || state.isUpdateAvailable,

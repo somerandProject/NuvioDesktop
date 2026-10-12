@@ -28,11 +28,31 @@ project; all original work is credited there.
 - **Fixed updater flow**: finishing a download no longer closes the app — the
   banner switches to "A new version is ready to install." with an **Install**
   button, and the app only restarts once you click it.
+- **Fixed updater flow**: finishing a download no longer closes the app — the
+  banner switches to "A new version is ready to install." with an **Install**
+  button, and the app only restarts once you click it.
 - **Fixed MSI upgrades**: every Dev build now carries a distinct Windows
   Installer product version (run-numbered, e.g. `1.2.11`). Previously all
   `0.2-alpha.X` builds shared one version, so msiexec "reconfigured" the
   installed product instead of upgrading and the in-app update silently failed
   ("Configuration failed").
+- **Fixed sign-in**: release builds now ship the full backend config (Supabase,
+  TMDB, Trakt, Simkl, MDBList, Premiumize) — previously the fork's CI built
+  with a blank config, so sign-in failed with "connection refused" and NuvioDev
+  could only pick up sessions signed in from the official app.
+- **Updater hardening**: downloads retry with backoff on transient CDN
+  failures, verify the GitHub release asset SHA-256, and offer an
+  **Open page** shortcut (release page in browser) when a download keeps
+  failing.
+- **Single instance**: launching NuvioDev twice focuses the running window and
+  forwards its `nuvio://` deep links instead of starting a second app. The
+  `nuvio://` protocol is registered per-user so browser links open the app.
+- **Primary profile by default**: the app boots straight into the primary
+  (unlocked) profile instead of showing the profile selector every launch.
+  Switch Profile in Settings still shows the selector.
+- **Real-Debrid** is now available in `Settings → Connected Services` (API key).
+- **Fixed**: stale debrid device-auth prompts are cleared once their approval
+  window has passed instead of waiting forever.
 
 ## 0.1
 

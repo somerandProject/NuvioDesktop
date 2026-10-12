@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.deeplink.handleAppUrl
 import com.nuvio.app.core.diagnostics.DesktopLogWriter
 import com.nuvio.app.core.diagnostics.SentryInitializer
+import com.nuvio.app.core.instance.DesktopSingleInstance
 import com.nuvio.app.core.ui.NuvioTheme
 import com.nuvio.app.core.ui.ProvideDesktopWindowInsets
 import com.nuvio.app.features.discordrpc.DiscordPresenceManager
@@ -61,6 +62,12 @@ fun main(args: Array<String>) {
     }
     applyDesktopRendererPreference()
     DesktopLogWriter.install()
+    // Single-instance guard: a second launch forwards its URL args to the
+    // running app and exits before touching any shared state. Must run before
+    // Sentry/tray/quickjs so the secondary never initializes anything.
+    if (!DesktopSingleInstance.acquire(args.toList())) {
+        return
+    }
     SentryInitializer.start()
     configureDesktopQuickJsLibrary()
     configureDesktopChrome()
@@ -159,6 +166,15 @@ fun main(args: Array<String>) {
                 // Windows fullscreen is emulated natively and isn't reflected by
                 // WindowPlacement, so it must be re-applied once the window peer exists.
                 fullscreenController.applyRestoredFullscreenState(window, windowState, wasFullscreenOnLastExit)
+            }
+            LaunchedEffect(window) {
+                // URLs forwarded by a secondary launch (single-instance relay):
+                // handle the deep link and make sure the window is visible.
+                DesktopSingleInstance.incomingUrls.collect { url ->
+                    window.isVisible = true
+                    runCatching { window.toFront() }
+                    runCatching { handleAppUrl(url) }
+                }
             }
             LaunchedEffect(window) {
                 val alwaysOnTopFlow = DesktopWindowBehavior.alwaysOnTop
