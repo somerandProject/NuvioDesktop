@@ -17,6 +17,7 @@ import com.nuvio.app.features.streams.StreamAutoPlaySelector
 import com.nuvio.app.features.streams.StreamAutoPlaySource
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.watching.domain.isShortPlaceholderDuration
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +26,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+
+private val preloadFailureLog = Logger.withTag("NextEpisodePreload")
 
 internal fun PlayerScreenRuntime.isAtNextEpisodeThreshold(): Boolean {
     if (playbackSnapshotKey != activePlaybackKey || playbackSnapshot.isLoading ||
@@ -402,12 +405,17 @@ internal fun PlayerScreenRuntime.preloadNextEpisodeSources() {
     nextEpisodePreloadTriggered = true
     nextEpisodePreloadJob?.cancel()
     nextEpisodePreloadJob = scope.launch {
-        PlayerStreamsRepository.loadEpisodeStreams(
-            type = type,
-            videoId = nextEp.videoId,
-            season = nextEp.season,
-            episode = nextEp.episode
-        )
+        runCatching {
+            PlayerStreamsRepository.loadEpisodeStreams(
+                type = type,
+                videoId = nextEp.videoId,
+                season = nextEp.season,
+                episode = nextEp.episode
+            )
+        }.onFailure { failure ->
+            if (failure is CancellationException) throw failure
+            preloadFailureLog.e("Next-episode preload failed", failure)
+        }
     }
 }
 

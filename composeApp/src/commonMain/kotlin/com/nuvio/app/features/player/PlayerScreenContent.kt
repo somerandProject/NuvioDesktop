@@ -5,9 +5,10 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.coroutineContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerButton
@@ -20,6 +21,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import co.touchlab.kermit.Logger
+import com.nuvio.app.core.ui.NuvioToastController
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.isDesktop
 import com.nuvio.app.features.details.MetaDetailsRepository
@@ -28,6 +31,11 @@ import com.nuvio.app.features.p2p.P2pSettingsRepository
 import com.nuvio.app.features.p2p.P2pStreamingEngine
 import com.nuvio.app.features.watched.WatchedRepository
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.compose_player_airs_prefix
 import nuvio.composeapp.generated.resources.compose_player_downloaded
@@ -46,6 +54,8 @@ import nuvio.composeapp.generated.resources.parental_severity_severe
 import nuvio.composeapp.generated.resources.parental_violence
 import nuvio.composeapp.generated.resources.compose_player_tba
 import org.jetbrains.compose.resources.stringResource
+
+private val playerScopeLog = Logger.withTag("PlayerScreen")
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -104,7 +114,29 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         val horizontalSafePadding = playerHorizontalSafePadding()
         val metrics = remember(maxWidth) { PlayerLayoutMetrics.fromWidth(maxWidth) }
 
-        runtime.scope = rememberCoroutineScope()
+        // The player launches many coroutines (autoplay handoff, source swaps,
+        // track refresh, progress persistence). A bare rememberCoroutineScope()
+        // lets any uncaught child exception kill the whole app on Android.
+        // A supervisor scope with an exception handler degrades that to a logged,
+        // surfaced failure instead of a force close.
+        val playerScopeContext = coroutineContext()
+        val playerScope = remember(playerScopeContext) {
+            CoroutineScope(
+                playerScopeContext + SupervisorJob() + CoroutineExceptionHandler { _, error ->
+                    if (error is CancellationException) return@CoroutineExceptionHandler
+                    playerScopeLog.e("Unhandled player coroutine failure", error)
+                    NuvioToastController.show(
+                        error.message?.takeIf { it.isNotBlank() }
+                            ?: error::class.simpleName
+                            ?: "Playback error",
+                    )
+                },
+            )
+        }
+        DisposableEffect(Unit) {
+            onDispose { playerScope.cancel() }
+        }
+        runtime.scope = playerScope
         runtime.hapticFeedback = LocalHapticFeedback.current
         runtime.gestureController = rememberPlayerGestureController(
             restoreBrightness = playerSettingsUiState.touchGesturesEnabled,

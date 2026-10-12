@@ -1,8 +1,9 @@
 name: Release NuvioDev
 
-# Builds and publishes a NuvioDev Windows MSI. Releases are tagged
-# "NuvioDev-v<version>" and a rolling "NuvioDev Latest" release is kept so the
-# in-app updater can find the newest build.
+# Builds and publishes NuvioDev releases: Windows MSI, Linux AppImage and
+# Android APKs. Releases are tagged "NuvioDev-v<version>" and a rolling
+# "NuvioDev Latest" release is kept so the in-app updater can find the newest
+# build.
 
 on:
   workflow_dispatch:
@@ -281,12 +282,87 @@ jobs:
           path: out/*.AppImage
           if-no-files-found: error
 
+  android:
+    name: Android APKs
+    needs: metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.metadata.outputs.rolling_version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          # JDK 17: the proven mobile-release toolchain (see the upstream
+          # android-release.yml workflow).
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Configure local.properties
+        shell: bash
+        run: |
+          if [[ -n "${LOCAL_PROPERTIES_BASE64}" ]]; then
+            printf '%s' "${LOCAL_PROPERTIES_BASE64}" | base64 --decode > local.properties
+          else
+            touch local.properties
+          fi
+      - name: Validate local.properties
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in NUVIO_SUPABASE_URL NUVIO_SUPABASE_ANON_KEY TRAKT_CLIENT_ID SIMKL_CLIENT_ID MDBLIST_CLIENT_ID; do
+            if ! grep -Eq "^${key}=..+" local.properties; then
+              echo "::error::local.properties is missing ${key} - the Android APK would bake in blank auth config."
+              exit 1
+            fi
+          done
+      - name: Build full release APKs
+        shell: bash
+        # No release keystore is configured for this fork, so the build falls
+        # back to the debug keystore (androidApp/build.gradle.kts) which keeps
+        # the APK installable for sideloading. ABI splits produce one APK per
+        # architecture.
+        run: >-
+          ./gradlew :androidApp:assembleFullRelease
+          "-Pnuvio.app.versionName=${VERSION}"
+          --no-configuration-cache --no-daemon --stacktrace
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          shopt -s nullglob
+          for apk in androidApp/build/outputs/apk/full/release/*.apk; do
+            base="$(basename "${apk}")"
+            abi="$(echo "${base}" | grep -oE 'arm64-v8a|armeabi-v7a|x86_64|x86' | head -n1 || true)"
+            if [[ -n "${abi}" ]]; then
+              cp "${apk}" "out/NuvioDev-${VERSION}-android-${abi}.apk"
+            else
+              cp "${apk}" "out/NuvioDev-${VERSION}-android-universal.apk"
+            fi
+          done
+          if ! compgen -G "out/*.apk" >/dev/null; then
+            echo "No APKs produced." >&2
+            find androidApp/build/outputs -name '*.apk' >&2 || true
+            exit 1
+          fi
+          ls -la out
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-dev-android
+          path: out/*.apk
+          if-no-files-found: error
+
   publish:
     name: Publish release
-    # Best-effort Linux: the release waits for the linux job so its artifact
-    # gets attached when it succeeds, but a Linux failure never blocks the
-    # Windows release or tests from publishing.
-    needs: [metadata, windows, tests, linux]
+    # Best-effort extras: the release waits for the linux/android jobs so
+    # their artifacts get attached when they succeed, but a Linux or Android
+    # failure never blocks the Windows release or tests from publishing.
+    needs: [metadata, windows, tests, linux, android]
     if: >-
       always() &&
       needs.metadata.result == 'success' &&
@@ -328,6 +404,7 @@ jobs:
             echo "- Skip intro/outro/recap now works out of the box (introdb default endpoint)."
             echo "- Diagnostics: **View logs** page and a crash-reporting opt-out toggle."
             echo "- Linux: portable **AppImage** (x86_64) for Arch and other distros; see \`packaging/arch\` for a PKGBUILD."
+            echo "- Android: sideload APKs (arm64-v8a, armeabi-v7a, x86_64, x86) built from the same codebase as the official app, with the next-episode force-close hardening. **Uninstall the official Nuvio app first** if it is installed (same app id, different signature); your data restores via Nuvio sync."
             echo "- Fixed: updating the official Nuvio app could wipe NuvioDev's files (installer component collision). NuvioDev MSIs are now built with a jpackage that avoids it."
             echo
             echo "## Full changelog"

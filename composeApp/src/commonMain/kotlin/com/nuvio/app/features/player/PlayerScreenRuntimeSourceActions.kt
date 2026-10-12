@@ -1,6 +1,7 @@
 package com.nuvio.app.features.player
 
 import com.nuvio.app.core.ui.NuvioToastController
+import co.touchlab.kermit.Logger
 import com.nuvio.app.features.debrid.DirectDebridPlayableResult
 import com.nuvio.app.features.debrid.DirectDebridPlaybackResolver
 import com.nuvio.app.features.debrid.toastMessage
@@ -436,7 +437,22 @@ internal fun PlayerScreenRuntime.switchToDownloadedEpisode(downloadItem: Downloa
     controlsVisible = true
 }
 
+private val nextEpisodeActionLog = Logger.withTag("NextEpisode")
+
 internal fun PlayerScreenRuntime.playNextEpisode(automatic: Boolean = false) {
+    try {
+        playNextEpisodeInternal(automatic)
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (failure: Throwable) {
+        // The tap entry points are synchronous UI handlers: an uncaught throw
+        // here would force close the app before any coroutine could recover.
+        nextEpisodeActionLog.e("Next-episode handoff failed", failure)
+        failure.message?.takeIf { it.isNotBlank() }?.let { NuvioToastController.show(it) }
+    }
+}
+
+private fun PlayerScreenRuntime.playNextEpisodeInternal(automatic: Boolean) {
     if (nextEpisodeAutoPlaySearching || nextEpisodeAutoPlayCountdown != null) return
     nextEpisodePreloadTriggered = false
     val playbackKey = activePlaybackKey

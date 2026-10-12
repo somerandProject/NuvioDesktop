@@ -54,6 +54,7 @@ Grab the latest build from the rolling release:
 
 - [NuvioDev Latest (Windows x64 MSI)](https://github.com/somerandProject/NuvioDesktop/releases/tag/nuvio-dev-latest)
 - [NuvioDev Latest (Linux x86_64 AppImage)](https://github.com/somerandProject/NuvioDesktop/releases/tag/nuvio-dev-latest)
+- [NuvioDev Latest (Android APKs)](https://github.com/somerandProject/NuvioDesktop/releases/tag/nuvio-dev-latest)
 
 The in-app updater points at this rolling release, so you can update without
 leaving the app.
@@ -78,6 +79,21 @@ release that ships the Linux AppImage, then:
 cd packaging/arch
 makepkg -si
 ```
+
+### Android
+
+The release also ships sideload APKs built from the same Compose Multiplatform
+codebase as the official mobile app (`arm64-v8a`, `armeabi-v7a`, `x86_64`,
+`x86` — pick the one matching your phone; most devices want `arm64-v8a`).
+The APKs are debug-signed for sideloading.
+
+> **Important:** the APK uses the same app id as the official Nuvio app but a
+> different signature, so Android refuses to install it over the official app.
+> Uninstall the official app first — your data restores via Nuvio sync after
+> you sign in.
+
+On the phone, open the APK asset from the release page, allow
+"install unknown apps" for the browser, and install.
 
 ## Build from source
 

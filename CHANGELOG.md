@@ -6,6 +6,15 @@ project; all original work is credited there.
 
 ## 0.3-alpha
 
+- **Android**: the release workflow now also builds **sideload APKs** (arm64-v8a,
+  armeabi-v7a, x86_64, x86) from the same Compose Multiplatform codebase as the
+  official mobile app. The mobile `cmp-rewrite` branch was merged (server
+  library fixes through 0.5.9-beta), and the player runtime was hardened
+  against force closes: the player coroutine scope is now a supervised scope
+  with an exception handler (an uncaught player-coroutine failure toasts and
+  logs instead of killing the app), and the next-episode handoff and preload
+  paths catch their own failures. Debug-signed for sideloading; uninstall the
+  official app first (same app id, different signature).
 - **Linux (Arch-friendly)**: the release workflow now also builds a portable
   **x86_64 AppImage** (best-effort — never blocks the Windows release) and
   ships a `packaging/arch/PKGBUILD` that installs it as a pacman package with
