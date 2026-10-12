@@ -20,6 +20,11 @@ project; all original work is credited there.
   and volume shortcuts.
 - **Diagnostics**: in-app **View logs** screen and a crash-reporting opt-out.
 - **Skip intro/outro/recap** works out of the box (introdb default endpoint).
+- **Fixed**: MSIs are now built with a jpackage whose installer components are
+  per-product, so updating the official Nuvio app no longer deletes NuvioDev's
+  files. NuvioDev's updater settings are also stored separately from the
+  official app's. If an older NuvioDev install ever loses its files again,
+  repair it with: `msiexec /f {3EAC7727-DC4D-32A0-A86B-C10ADA878BFA}`.
 
 ## 0.1
 

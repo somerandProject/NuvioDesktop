@@ -85,7 +85,11 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          # JDK 21+: its jpackage generates MSI component GUIDs per product.
+          # JDK 17-derived GUIDs collide with other jpackage apps (e.g. the
+          # official Nuvio MSI), and installing either app removes the other's
+          # identically-named files, leaving a launcher that silently fails.
+          java-version: 21
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
       - name: Configure local.properties
@@ -171,6 +175,7 @@ jobs:
             echo "- Player: **A-B loop**, frame step, subtitle delay nudge, and more keyboard shortcuts."
             echo "- Skip intro/outro/recap now works out of the box (introdb default endpoint)."
             echo "- Diagnostics: **View logs** page and a crash-reporting opt-out toggle."
+            echo "- Fixed: updating the official Nuvio app could wipe NuvioDev's files (installer component collision). NuvioDev MSIs are now built with a jpackage that avoids it."
             echo
             echo "## Full changelog"
             echo

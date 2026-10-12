@@ -24,7 +24,10 @@ import kotlin.concurrent.thread
 import kotlin.io.path.createDirectories
 import kotlin.system.exitProcess
 
-private const val desktopUpdaterPreferencesName = "nuvio_updater"
+// Named per-app on purpose: NuvioDev and the official Nuvio app share the same
+// app-data directory, and with a shared store their update channels and ignored
+// releases would overwrite each other.
+private const val desktopUpdaterPreferencesName = "nuvio_dev_updater"
 private const val ignoredTagKey = "ignored_release_tag"
 private const val updateChannelKey = "update_channel"
 private const val lastSeenVersionKey = "last_seen_version"
