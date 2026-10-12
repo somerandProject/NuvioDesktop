@@ -3,6 +3,7 @@
 #endif
 #include <windows.h>
 #include <windowsx.h>
+#include <d3d11.h>
 #include <dwmapi.h>
 #include <shlobj.h>
 #include <wrl.h>
@@ -497,6 +498,19 @@ std::string mpvShaderCacheDirectory() {
     } catch (...) {
         return std::string();
     }
+}
+
+bool unifiedMemoryGpu() {
+    static const bool unified = []() {
+        ComPtr<ID3D11Device> device;
+        if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, nullptr))) {
+            return false;
+        }
+        D3D11_FEATURE_DATA_D3D11_OPTIONS2 options = {};
+        return SUCCEEDED(device->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS2, &options, sizeof(options))) &&
+            options.UnifiedMemoryArchitecture;
+    }();
+    return unified;
 }
 
 struct MpvApi {
@@ -1688,6 +1702,7 @@ private:
         bool nvidiaRtxSuperResolutionEnabled
     ) {
         MpvApi &api = mpvApi();
+        bool fastProfile = !nvidiaRtxSuperResolutionEnabled && unifiedMemoryGpu();
         {
             std::lock_guard<std::mutex> lock(mpvMutex);
             mpv = api.create();
@@ -1728,9 +1743,13 @@ private:
             setMpvOptionStringLocked("vd-lavc-threads", "4");
             setMpvOptionStringLocked("tone-mapping", "bt.2390");
             setMpvOptionStringLocked("dither-depth", "auto");
-            setMpvOptionStringLocked("deband", "yes");
-            setMpvOptionStringLocked("scale", "spline36");
-            setMpvOptionStringLocked("cscale", "spline36");
+            if (fastProfile) {
+                setMpvOptionStringLocked("profile", "fast");
+            } else {
+                setMpvOptionStringLocked("deband", "yes");
+                setMpvOptionStringLocked("scale", "spline36");
+                setMpvOptionStringLocked("cscale", "spline36");
+            }
             setMpvOptionStringLocked("demuxer-max-bytes", "150MiB");
             setMpvOptionStringLocked("demuxer-max-back-bytes", "50MiB");
             setMpvOptionStringLocked("demuxer-seekable-cache", "yes");
