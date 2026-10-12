@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.coroutineContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerButton
@@ -34,6 +33,7 @@ import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import nuvio.composeapp.generated.resources.Res
@@ -119,10 +119,9 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         // lets any uncaught child exception kill the whole app on Android.
         // A supervisor scope with an exception handler degrades that to a logged,
         // surfaced failure instead of a force close.
-        val playerScopeContext = coroutineContext()
-        val playerScope = remember(playerScopeContext) {
+        val playerScope = remember {
             CoroutineScope(
-                playerScopeContext + SupervisorJob() + CoroutineExceptionHandler { _, error ->
+                Dispatchers.Main + SupervisorJob() + CoroutineExceptionHandler { _, error ->
                     if (error is CancellationException) return@CoroutineExceptionHandler
                     playerScopeLog.e("Unhandled player coroutine failure", error)
                     NuvioToastController.show(
