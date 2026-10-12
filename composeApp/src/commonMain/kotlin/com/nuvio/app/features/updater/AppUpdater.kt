@@ -238,7 +238,11 @@ class AppUpdaterController internal constructor(
                         errorMessage = null,
                     )
                 }
-                installDownloadedUpdate()
+                // Deliberately NOT auto-installing: the banner flips to
+                // "A new version is ready to install." with an Install button,
+                // so the app only closes once the user asks for it. Auto-launching
+                // the installer here killed the app the moment a download
+                // finished, which read as a crash when the install failed.
             }.onFailure { error ->
                 _uiState.update { state ->
                     state.copy(

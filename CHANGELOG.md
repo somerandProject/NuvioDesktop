@@ -25,6 +25,14 @@ project; all original work is credited there.
   files. NuvioDev's updater settings are also stored separately from the
   official app's. If an older NuvioDev install ever loses its files again,
   repair it with: `msiexec /f {3EAC7727-DC4D-32A0-A86B-C10ADA878BFA}`.
+- **Fixed updater flow**: finishing a download no longer closes the app — the
+  banner switches to "A new version is ready to install." with an **Install**
+  button, and the app only restarts once you click it.
+- **Fixed MSI upgrades**: every Dev build now carries a distinct Windows
+  Installer product version (run-numbered, e.g. `1.2.11`). Previously all
+  `0.2-alpha.X` builds shared one version, so msiexec "reconfigured" the
+  installed product instead of upgrading and the in-app update silently failed
+  ("Configuration failed").
 
 ## 0.1
 

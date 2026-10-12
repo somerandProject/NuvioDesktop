@@ -405,6 +405,22 @@ fun jpackageCompatibleVersion(version: String): String {
     while (numbers.size < 3) {
         numbers += 0
     }
+    // CI builds fork prereleases as "<core>-<label>.<run>" (e.g. "0.2-alpha.10").
+    // The run number becomes the MSI patch version so every build is a distinct
+    // Windows Installer product: an unchanged product version makes msiexec try
+    // to reconfigure the installed product instead of upgrading, which fails
+    // ("Product: NuvioDev -- Configuration failed"). MSI product version fields
+    // cap at 255, so wrap the run number into that range.
+    if (parts.size < 3 && version.contains('-')) {
+        val prereleaseTail = version.substringAfter('-').substringBefore('+')
+            .substringAfterLast('.').trim()
+        if (prereleaseTail.isNotEmpty() && prereleaseTail.all(Char::isDigit)) {
+            val runNumber = prereleaseTail.toIntOrNull() ?: 0
+            if (runNumber > 0) {
+                numbers[2] = ((runNumber - 1) % 255) + 1
+            }
+        }
+    }
     numbers[0] = numbers[0].coerceAtLeast(1)
     return numbers.joinToString(".")
 }

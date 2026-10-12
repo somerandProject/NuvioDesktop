@@ -53,7 +53,10 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          # JDK 21+: jpackage generates per-product MSI component GUIDs; the
+          # JDK 17 scheme collides with other jpackage apps (e.g. the official
+          # Nuvio MSI) and installs wipe each other's files.
+          java-version: 21
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -108,11 +111,15 @@ jobs:
       - name: Verify MSI
         shell: pwsh
         run: |
-          $expected = "composeApp\build\compose\release-msis\$env:NUVIO_DEV_PACKAGE_NAME-Windows-x64-$env:RELEASE_VERSION.msi"
-          if (-not (Test-Path $expected)) {
-            throw "Expected MSI was not produced: $expected"
+          # jpackage derives the MSI product version (and file name) from the
+          # version, which changes independently of VERSION_NAME, so locate the
+          # produced MSI by glob instead of predicting the exact name.
+          $msi = Get-ChildItem "composeApp\build\compose\release-msis" -Filter "*.msi" |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($null -eq $msi) {
+            throw "No MSI was produced in composeApp\build\compose\release-msis"
           }
-          Get-Item $expected | Format-List Name, Length, LastWriteTime
+          $msi | Format-List Name, Length, LastWriteTime
 
       - name: Upload MSI
         uses: actions/upload-artifact@v7
