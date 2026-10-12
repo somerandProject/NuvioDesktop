@@ -330,13 +330,9 @@ internal fun AppGate(
         }
 
         autoSkipProfileSelection = true
-        if (profiles.size == 1) {
-            val onlyProfile = profiles.first()
-            if (onlyProfile.pinEnabled) {
-                gateScreen = AppGateScreen.ProfileSelection.name
-                return
-            }
-            selectProfile(onlyProfile, sync = syncOnEnter)
+        val primaryProfile = profiles.firstOrNull()?.takeUnless { it.pinEnabled }
+        if (primaryProfile != null) {
+            selectProfile(primaryProfile, sync = syncOnEnter)
             gateScreen = AppGateScreen.Main.name
             autoSkipProfileSelection = false
         } else {
@@ -410,12 +406,10 @@ internal fun AppGate(
                 return@LaunchedEffect
             }
 
-            if (profileState.profiles.size != 1) return@LaunchedEffect
+            val primaryProfile = profileState.profiles.firstOrNull()?.takeUnless { it.pinEnabled }
+            if (primaryProfile == null) return@LaunchedEffect
 
-            val onlyProfile = profileState.profiles.first()
-            if (onlyProfile.pinEnabled) return@LaunchedEffect
-
-            selectProfile(onlyProfile, sync = true)
+            selectProfile(primaryProfile, sync = true)
             gateScreen = AppGateScreen.Main.name
             autoSkipProfileSelection = false
         }
