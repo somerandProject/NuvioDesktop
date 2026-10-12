@@ -6,6 +6,12 @@ project; all original work is credited there.
 
 ## 0.3-alpha
 
+- **Linux (Arch-friendly)**: the release workflow now also builds a portable
+  **x86_64 AppImage** (best-effort — never blocks the Windows release) and
+  ships a `packaging/arch/PKGBUILD` that installs it as a pacman package with
+  menu entry and `nuvio-dev` launcher. Runtime deps: `mpv`,
+  `webkit2gtk-4.1`, `gst-plugins-good`, `gst-libav`, `libxcomposite`,
+  `fuse2`.
 - **Performance**: second pass after the polling overhaul — the native
   controls bridge now also skips WebView pushes entirely while paused with
   nothing changed, log lines are queued to a background writer thread (no

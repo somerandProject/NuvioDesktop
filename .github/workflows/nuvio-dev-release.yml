@@ -1,4 +1,4 @@
-name: Release NuvioDev (Windows MSI)
+name: Release NuvioDev
 
 # Builds and publishes a NuvioDev Windows MSI. Releases are tagged
 # "NuvioDev-v<version>" and a rolling "NuvioDev Latest" release is kept so the
@@ -195,9 +195,103 @@ jobs:
           path: out/*.msi
           if-no-files-found: error
 
+  linux:
+    name: Linux x64 AppImage
+    needs: metadata
+    runs-on: ubuntu-latest
+    env:
+      NUVIO_DESKTOP_VERSION_NAME: ${{ needs.metadata.outputs.rolling_version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Install Linux build dependencies
+        run: bash ./scripts/linux/install-desktop-build-dependencies.sh
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Configure local.properties
+        shell: bash
+        run: |
+          if [[ -n "${LOCAL_PROPERTIES_BASE64}" ]]; then
+            printf '%s' "${LOCAL_PROPERTIES_BASE64}" | base64 --decode > local.properties
+          else
+            touch local.properties
+          fi
+      - name: Validate local.properties
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -s local.properties ]]; then
+            echo "::error::local.properties is empty - the NUVIO_DESKTOP_LOCAL_PROPERTIES_BASE64 secret is missing or invalid."
+            exit 1
+          fi
+          for key in NUVIO_SUPABASE_URL NUVIO_SUPABASE_ANON_KEY TRAKT_CLIENT_ID SIMKL_CLIENT_ID MDBLIST_CLIENT_ID; do
+            if ! grep -Eq "^${key}=..+" local.properties; then
+              echo "::error::local.properties is missing ${key}."
+              exit 1
+            fi
+          done
+      - name: Build AppImage
+        shell: bash
+        env:
+          APPIMAGE_TOOL_VERSION: 1.9.1
+          APPIMAGETOOL_SHA256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+        run: |
+          set -euo pipefail
+          appimagetool_path="${RUNNER_TEMP}/appimagetool-x86_64.AppImage"
+          curl -fsSL -o "${appimagetool_path}" \
+            "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGE_TOOL_VERSION}/appimagetool-x86_64.AppImage"
+          actual_sha256="$(sha256sum "${appimagetool_path}" | awk '{print $1}')"
+          if [[ "${actual_sha256}" != "${APPIMAGETOOL_SHA256}" ]]; then
+            echo "appimagetool checksum mismatch." >&2
+            echo "Expected: ${APPIMAGETOOL_SHA256}" >&2
+            echo "Actual:   ${actual_sha256}" >&2
+            exit 1
+          fi
+          chmod +x "${appimagetool_path}"
+          # No -Pnuvio.desktop.packageName: the internal binary must stay
+          # "Nuvio" so the generated AppRun script finds bin/Nuvio. The
+          # artifact is renamed to NuvioDev-* in the collect step below.
+          export APPIMAGETOOL="${appimagetool_path}"
+          ./gradlew :composeApp:packageReleaseAppImage \
+            -Pcompose.desktop.packaging.checkJdkVendor=false \
+            --no-configuration-cache --no-daemon --stacktrace
+      - name: Collect artifact
+        shell: bash
+        env:
+          VERSION: ${{ needs.metadata.outputs.rolling_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          src="composeApp/build/compose/release-appimages/Nuvio-Linux-x86_64-${VERSION}.AppImage"
+          if [[ ! -f "${src}" ]]; then
+            echo "Expected AppImage at ${src}." >&2
+            find composeApp/build/compose -name '*.AppImage' >&2 || true
+            exit 1
+          fi
+          cp "${src}" "out/NuvioDev-Linux-x86_64-${VERSION}.AppImage"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuvio-dev-linux-x64
+          path: out/*.AppImage
+          if-no-files-found: error
+
   publish:
     name: Publish release
-    needs: [metadata, windows, tests]
+    # Best-effort Linux: the release waits for the linux job so its artifact
+    # gets attached when it succeeds, but a Linux failure never blocks the
+    # Windows release or tests from publishing.
+    needs: [metadata, windows, tests, linux]
+    if: >-
+      always() &&
+      needs.metadata.result == 'success' &&
+      needs.windows.result == 'success' &&
+      needs.tests.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -233,6 +327,7 @@ jobs:
             echo "- Player: **A-B loop**, frame step, subtitle delay nudge, and more keyboard shortcuts."
             echo "- Skip intro/outro/recap now works out of the box (introdb default endpoint)."
             echo "- Diagnostics: **View logs** page and a crash-reporting opt-out toggle."
+            echo "- Linux: portable **AppImage** (x86_64) for Arch and other distros; see \`packaging/arch\` for a PKGBUILD."
             echo "- Fixed: updating the official Nuvio app could wipe NuvioDev's files (installer component collision). NuvioDev MSIs are now built with a jpackage that avoids it."
             echo
             echo "## Full changelog"

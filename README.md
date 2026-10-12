@@ -53,9 +53,31 @@ entry, so installing or updating it will **not** touch your official Nuvio insta
 Grab the latest build from the rolling release:
 
 - [NuvioDev Latest (Windows x64 MSI)](https://github.com/somerandProject/NuvioDesktop/releases/tag/nuvio-dev-latest)
+- [NuvioDev Latest (Linux x86_64 AppImage)](https://github.com/somerandProject/NuvioDesktop/releases/tag/nuvio-dev-latest)
 
 The in-app updater points at this rolling release, so you can update without
 leaving the app.
+
+### Linux (Arch and derivatives)
+
+The AppImage needs a few system libraries (already present on most setups):
+
+```sh
+sudo pacman -S mpv webkit2gtk-4.1 gst-plugins-good gst-libav libxcomposite glib-networking fuse2
+chmod +x NuvioDev-Linux-x86_64-*.AppImage
+./NuvioDev-Linux-x86_64-*.AppImage
+```
+
+No `fuse2`? Run it with `./NuvioDev-Linux-x86_64-*.AppImage --appimage-extract-and-run`.
+
+To install it as a pacman package (menu entry + `nuvio-dev` command), use the
+bundled PKGBUILD — set `_realver`/`pkgver` and the `sha256sums` digest to a
+release that ships the Linux AppImage, then:
+
+```sh
+cd packaging/arch
+makepkg -si
+```
 
 ## Build from source
 
