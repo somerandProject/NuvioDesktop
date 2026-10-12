@@ -10,10 +10,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerButton
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -22,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import com.nuvio.app.core.ui.NuvioToastController
+import com.nuvio.app.core.ui.blockMouseBackForwardButtons
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.isDesktop
 import com.nuvio.app.features.details.MetaDetailsRepository
@@ -95,20 +92,7 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         modifier = args.modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        if (event.type == PointerEventType.Press) {
-                            if (event.button == PointerButton.Back) {
-                                event.changes.forEach { it.consume() }
-                            } else if (event.button == PointerButton.Forward) {
-                                event.changes.forEach { it.consume() }
-                            }
-                        }
-                    }
-                }
-            },
+            .blockMouseBackForwardButtons(),
     ) {
         val density = LocalDensity.current
         val horizontalSafePadding = playerHorizontalSafePadding()

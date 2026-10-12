@@ -192,11 +192,9 @@ import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.input.pointer.PointerButton
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.pointerInput
 import com.nuvio.app.core.ui.AppPresenceState
 import com.nuvio.app.core.ui.PresenceSnapshot
+import com.nuvio.app.core.ui.onMouseBackButton
 import androidx.compose.ui.ExperimentalComposeUiApi
 import com.nuvio.app.features.player.dispatchNavigationBack
 
@@ -1267,21 +1265,9 @@ internal fun MainAppContent(
                             false
                         }
                     }
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                if (event.type == PointerEventType.Press) {
-                                    if (!event.changes.any { it.isConsumed }) {
-                                        if (event.button == PointerButton.Back) {
-                                            event.changes.forEach { it.consume() }
-                                            if (!PlatformBackDispatcher.dispatch()) {
-                                                navController.popBackStack()
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                    .onMouseBackButton {
+                        if (!PlatformBackDispatcher.dispatch()) {
+                            navController.popBackStack()
                         }
                     },
             ) {
