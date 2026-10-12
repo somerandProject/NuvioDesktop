@@ -590,12 +590,32 @@ val generateRuntimeConfigs = tasks.register<GenerateRuntimeConfigsTask>("generat
     appVersionCode.set(releaseAppVersionCode)
     desktopAppVersionName.set(desktopReleaseVersionName)
     desktopAppVersionCode.set(desktopReleaseVersionCode)
-    supabaseUrl.set(runtimeConfigValue("NUVIO_SUPABASE_URL"))
-    supabaseAnonKey.set(runtimeConfigValue("NUVIO_SUPABASE_ANON_KEY"))
-    supabaseFallbackUrl.set(runtimeConfigValue("NUVIO_SUPABASE_FALLBACK_URL"))
+    supabaseUrl.set(
+        runtimeConfigValue(
+            "NUVIO_SUPABASE_URL",
+            fallback = "https://api.nuvio.tv",
+        )
+    )
+    supabaseAnonKey.set(
+        runtimeConfigValue(
+            "NUVIO_SUPABASE_ANON_KEY",
+            fallback = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzgxNTIxMzQ2LCJleHAiOjE5MzkyMDEzNDZ9.tmQaj682pwzehpqlgCDMnySOqiUvpgRbrE43T4VJpDI",
+        )
+    )
+    supabaseFallbackUrl.set(
+        runtimeConfigValue(
+            "NUVIO_SUPABASE_FALLBACK_URL",
+            fallback = "https://api-two.nuvioapp.space",
+        )
+    )
     sentryDsn.set(runtimeConfigValue("SENTRY_DSN"))
     sentryDesktopDsn.set(runtimeConfigValue("SENTRY_DESKTOP_DSN"))
-    tmdbApiKey.set(runtimeConfigValue("TMDB_API_KEY"))
+    tmdbApiKey.set(
+        runtimeConfigValue(
+            "TMDB_API_KEY",
+            fallback = "01926d2187b6a5d861eefc750e9df3e3",
+        )
+    )
     sentryEnvironment.set(
         when {
             requestedGradleTasks.any { "benchmark" in it } -> "benchmark"
