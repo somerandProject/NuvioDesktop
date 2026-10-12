@@ -42,7 +42,7 @@ entry, so installing or updating it will **not** touch your official Nuvio insta
 | `G` / `H` | Subtitle delay −/+ 100 ms |
 | `,` / `.` | Step one frame back/forward |
 | `Shift+A` / `Shift+C` | Set A-B loop / clear A-B loop |
-| `Enter` | Skip intro/outro when the prompt is visible |
+| `Enter` / `Z` | Skip intro/outro when the prompt is visible |
 | `T` | Stream info |
 | `X` | Stop |
 | `P` | Picture-in-picture |

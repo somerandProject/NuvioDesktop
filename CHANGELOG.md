@@ -16,8 +16,12 @@ project; all original work is credited there.
 - **Window behavior**: remember size/position (existing), new **always on top**
   and **minimize to tray** toggles.
 - **Player**: A-B loop (`Shift+A` set, `Shift+C` clear), frame step (`,` / `.`),
-  and the existing subtitle delay nudge (`G` / `H`), skip (`Enter`), speed, seek
-  and volume shortcuts.
+  and the existing subtitle delay nudge (`G` / `H`), skip (`Enter` / `Z`), speed,
+  seek and volume shortcuts.
+- **Player**: built-in subtitle tracks embedded in the video stream are now
+  loaded automatically (first non-forced track) when no preferred subtitle
+  language is configured; picking a language or turning subtitles off still
+  takes precedence.
 - **Diagnostics**: in-app **View logs** screen and a crash-reporting opt-out.
 - **Skip intro/outro/recap** works out of the box (introdb default endpoint).
 - **Fixed**: MSIs are now built with a jpackage whose installer components are

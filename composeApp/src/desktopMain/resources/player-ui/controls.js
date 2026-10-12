@@ -3961,7 +3961,8 @@ document.addEventListener("keydown", event => {
     return;
   }
 
-  if (event.code === "Enter" && state.skipPromptVisible) {
+  const skipActivationKey = event.code === "Enter" || (event.code === "KeyZ" && !event.shiftKey);
+  if (skipActivationKey && state.skipPromptVisible) {
     const activeEl = document.activeElement;
     if (!activeEl || activeEl.tagName === "BODY" || activeEl === root) {
       event.preventDefault();

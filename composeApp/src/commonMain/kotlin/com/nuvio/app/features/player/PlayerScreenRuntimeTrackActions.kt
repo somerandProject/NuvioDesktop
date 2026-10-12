@@ -258,8 +258,7 @@ private fun PlayerScreenRuntime.tryAutoSelectPreferredSubtitleFromAvailableTrack
         return
     }
     if (selectionPlan.targets.isEmpty()) {
-        disableAutomaticSubtitleSelection()
-        preferredSubtitleSelectionApplied = true
+        autoSelectFirstBuiltInSubtitleTrack()
         return
     }
 
@@ -387,4 +386,20 @@ private fun PlayerScreenRuntime.disableAutomaticSubtitleSelection() {
     selectedSubtitleIndex = -1
     selectedAddonSubtitleId = null
     useCustomSubtitles = false
+}
+
+private fun PlayerScreenRuntime.autoSelectFirstBuiltInSubtitleTrack() {
+    if (playbackSnapshot.isLoading) return
+    if (!hasScannedTextTracksOnce) return
+    preferredSubtitleSelectionApplied = true
+    if (useCustomSubtitles || selectedAddonSubtitleId != null) return
+    val candidateIndex = subtitleTracks.indexOfFirst { !it.isForced }
+    if (candidateIndex < 0) {
+        disableAutomaticSubtitleSelection()
+        return
+    }
+    if (selectedSubtitleIndex != candidateIndex) {
+        playerController?.selectSubtitleTrack(candidateIndex)
+        selectedSubtitleIndex = candidateIndex
+    }
 }
