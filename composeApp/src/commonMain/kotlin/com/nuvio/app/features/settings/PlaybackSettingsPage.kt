@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.enabledAddons
+import com.nuvio.app.features.player.AddonSubtitleStartupMode
 import com.nuvio.app.features.player.AndroidLibmpvVideoOutput
 import com.nuvio.app.features.player.PlaybackBufferSettings
 import com.nuvio.app.features.player.playbackHeapBufferMaxMb
@@ -74,10 +75,12 @@ import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.player.STREAM_AUTO_PLAY_TIMEOUT_VALUES
 import com.nuvio.app.features.player.SubtitleBackgroundColorSwatches
 import com.nuvio.app.features.player.SubtitleColorSwatches
+import com.nuvio.app.features.player.SubtitleFontFamily
+import com.nuvio.app.features.player.SubtitleFontFileBridge
 import com.nuvio.app.features.player.SubtitleLanguageOption
 import com.nuvio.app.features.player.formatPlaybackSpeedLabel
-import com.nuvio.app.features.player.languageLabelForCode
 import com.nuvio.app.features.player.subtitleFontSizeRangeSp
+import com.nuvio.app.features.player.languageLabelForCode
 import com.nuvio.app.features.player.toStorageHexString
 import com.nuvio.app.features.p2p.P2pConsentDialog
 import com.nuvio.app.features.p2p.P2pCacheClearResult
@@ -180,6 +183,17 @@ private fun formatP2pCacheBytes(bytes: Long): String {
         "${kotlin.math.round(bytes / mebibyte * 10.0) / 10.0} MB"
     }
 }
+
+@Composable
+private fun addonSubtitleStartupModeLabel(mode: AddonSubtitleStartupMode): String =
+    when (mode) {
+        AddonSubtitleStartupMode.FAST_STARTUP ->
+            stringResource(Res.string.settings_playback_addon_subtitle_startup_fast)
+        AddonSubtitleStartupMode.PREFERRED_ONLY ->
+            stringResource(Res.string.settings_playback_addon_subtitle_startup_preferred)
+        AddonSubtitleStartupMode.ALL_SUBTITLES ->
+            stringResource(Res.string.settings_playback_addon_subtitle_startup_all)
+    }
 
 fun snapToStep(value: Float, step: Float): Float {
     return (value / step).roundToInt() * step
@@ -309,6 +323,21 @@ private fun subtitleColorLabel(color: Color): String {
 }
 
 @Composable
+private fun subtitleFontFamilyLabel(
+    family: SubtitleFontFamily,
+    customFontName: String?,
+): String =
+    when (family) {
+        SubtitleFontFamily.System -> "System"
+        SubtitleFontFamily.SansSerif -> "Sans"
+        SubtitleFontFamily.Serif -> "Serif"
+        SubtitleFontFamily.Monospace -> "Mono"
+        SubtitleFontFamily.Rounded -> "Rounded"
+        SubtitleFontFamily.Custom -> customFontName?.takeIf { it.isNotBlank() }
+            ?: stringResource(Res.string.compose_player_font_custom)
+    }
+
+@Composable
 private fun PlaybackSettingsSection(
     isTablet: Boolean,
     showLoadingOverlay: Boolean,
@@ -335,9 +364,11 @@ private fun PlaybackSettingsSection(
     var showSecondaryAudioDialog by remember { mutableStateOf(false) }
     var showPreferredSubtitleDialog by remember { mutableStateOf(false) }
     var showSecondarySubtitleDialog by remember { mutableStateOf(false) }
+    var showAddonSubtitleStartupModeDialog by remember { mutableStateOf(false) }
     var showSubtitleTextColorDialog by remember { mutableStateOf(false) }
     var showSubtitleBackgroundColorDialog by remember { mutableStateOf(false) }
     var showSubtitleOutlineColorDialog by remember { mutableStateOf(false) }
+    var showSubtitleFontDialog by remember { mutableStateOf(false) }
     var showExternalPlayerDialog by remember { mutableStateOf(false) }
     var showExternalPlayerAppDialog by remember { mutableStateOf(false) }
     var showReuseCacheDurationDialog by remember { mutableStateOf(false) }
@@ -513,36 +544,55 @@ private fun PlaybackSettingsSection(
                             onClick = { showHoldToSpeedValueDialog = true },
                         )
                     }
-                    if (isDesktop) {
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsSwitchRow(
-                            title = stringResource(Res.string.settings_playback_volume_boost),
-                            description = stringResource(Res.string.settings_playback_volume_boost_description),
-                            checked = autoPlayPlayerSettings.volumeBoostEnabled,
-                            isTablet = isTablet,
-                            onCheckedChange = PlayerSettingsRepository::setVolumeBoostEnabled,
-                        )
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsNavigationRow(
-                            title = stringResource(Res.string.settings_playback_seek_step),
-                            description = stringResource(
-                                Res.string.settings_playback_seek_step_description,
-                                autoPlayPlayerSettings.keyboardSeekStepSeconds,
-                            ),
-                            isTablet = isTablet,
-                            onClick = {
-                                val current = autoPlayPlayerSettings.keyboardSeekStepSeconds
-                                PlayerSettingsRepository.setKeyboardSeekStepSeconds(
-                                    when (current) {
-                                        5 -> 10
-                                        10 -> 15
-                                        15 -> 30
-                                        else -> 5
-                                    },
-                                )
-                            },
-                        )
-                    }
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSwitchRow(
+                        title = stringResource(Res.string.settings_playback_remember_brightness),
+                        description = stringResource(Res.string.settings_playback_remember_brightness_description),
+                        checked = autoPlayPlayerSettings.rememberPlayerBrightnessEnabled,
+                        enabled = !autoPlayPlayerSettings.externalPlayerEnabled,
+                        isTablet = isTablet,
+                        onCheckedChange = PlayerSettingsRepository::setRememberPlayerBrightnessEnabled,
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSwitchRow(
+                        title = stringResource(Res.string.settings_playback_remember_choices),
+                        description = stringResource(Res.string.settings_playback_remember_choices_description),
+                        checked = autoPlayPlayerSettings.rememberPlayerChoicesEnabled,
+                        enabled = !autoPlayPlayerSettings.externalPlayerEnabled,
+                        isTablet = isTablet,
+                        onCheckedChange = PlayerSettingsRepository::setRememberPlayerChoicesEnabled,
+                    )
+                }
+                if (isDesktop) {
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSwitchRow(
+                        title = stringResource(Res.string.settings_playback_volume_boost),
+                        description = stringResource(Res.string.settings_playback_volume_boost_description),
+                        checked = autoPlayPlayerSettings.volumeBoostEnabled,
+                        isTablet = isTablet,
+                        onCheckedChange = PlayerSettingsRepository::setVolumeBoostEnabled,
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.settings_playback_seek_step),
+                        description = stringResource(
+                            Res.string.settings_playback_seek_step_description,
+                            autoPlayPlayerSettings.keyboardSeekStepSeconds,
+                        ),
+                        isTablet = isTablet,
+                        onClick = {
+                            val current = autoPlayPlayerSettings.keyboardSeekStepSeconds
+                            PlayerSettingsRepository.setKeyboardSeekStepSeconds(
+                                when (current) {
+                                    5 -> 10
+                                    10 -> 15
+                                    15 -> 30
+                                    else -> 5
+                                },
+                            )
+                        },
+                    )
+                }
                 }
             }
         }
@@ -606,19 +656,6 @@ private fun PlaybackSettingsSection(
                 )
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
-                    title = stringResource(Res.string.settings_playback_subtitle_strip_sdh),
-                    description = stringResource(Res.string.settings_playback_subtitle_strip_sdh_description),
-                    checked = autoPlayPlayerSettings.subtitleStyle.stripSdh,
-                    enabled = otherSubtitleOptionsEnabled,
-                    isTablet = isTablet,
-                    onCheckedChange = { enabled ->
-                        PlayerSettingsRepository.setSubtitleStyle(
-                            autoPlayPlayerSettings.subtitleStyle.copy(stripSdh = enabled),
-                        )
-                    },
-                )
-                SettingsGroupDivider(isTablet = isTablet)
-                SettingsSwitchRow(
                     title = stringResource(Res.string.settings_playback_subtitle_use_forced),
                     description = stringResource(Res.string.settings_playback_subtitle_use_forced_description),
                     checked = autoPlayPlayerSettings.subtitleStyle.useForcedSubtitles,
@@ -643,6 +680,14 @@ private fun PlaybackSettingsSection(
                         )
                     },
                 )
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsNavigationRow(
+                    title = stringResource(Res.string.settings_playback_addon_subtitle_startup_mode),
+                    description = addonSubtitleStartupModeLabel(autoPlayPlayerSettings.addonSubtitleStartupMode),
+                    enabled = otherSubtitleOptionsEnabled,
+                    isTablet = isTablet,
+                    onClick = { showAddonSubtitleStartupModeDialog = true },
+                )
             }
         }
 
@@ -664,6 +709,14 @@ private fun PlaybackSettingsSection(
                     onValueChange = { value ->
                         PlayerSettingsRepository.setSubtitleStyle(subtitleStyle.copy(fontSizeSp = value))
                     },
+                )
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsNavigationRow(
+                    title = stringResource(Res.string.compose_player_font_family),
+                    description = subtitleFontFamilyLabel(subtitleStyle.fontFamily, subtitleStyle.customFontName),
+                    enabled = subtitleRenderingEnabled,
+                    isTablet = isTablet,
+                    onClick = { showSubtitleFontDialog = true },
                 )
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSliderRow(
@@ -1452,17 +1505,6 @@ private fun PlaybackSettingsSection(
                     isTablet = isTablet,
                     onCheckedChange = PlayerSettingsRepository::setStreamAutoPlayNextEpisodeEnabled,
                 )
-                if (autoPlayPlayerSettings.streamAutoPlayNextEpisodeEnabled &&
-                    autoPlayPlayerSettings.streamAutoPlayMode == StreamAutoPlayMode.MANUAL) {
-                    SettingsGroupDivider(isTablet = isTablet)
-                    SettingsSwitchRow(
-                        title = stringResource(Res.string.settings_playback_auto_play_next_episode_fallback),
-                        description = stringResource(Res.string.settings_playback_auto_play_next_episode_fallback_description),
-                        checked = autoPlayPlayerSettings.streamAutoPlayNextEpisodeFallbackEnabled,
-                        isTablet = isTablet,
-                        onCheckedChange = PlayerSettingsRepository::setStreamAutoPlayNextEpisodeFallbackEnabled,
-                    )
-                }
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
                     title = stringResource(Res.string.settings_playback_prefer_binge_group),
@@ -1735,6 +1777,17 @@ private fun PlaybackSettingsSection(
         )
     }
 
+    if (showAddonSubtitleStartupModeDialog) {
+        AddonSubtitleStartupModeDialog(
+            selectedMode = autoPlayPlayerSettings.addonSubtitleStartupMode,
+            onModeSelected = {
+                PlayerSettingsRepository.setAddonSubtitleStartupMode(it)
+                showAddonSubtitleStartupModeDialog = false
+            },
+            onDismiss = { showAddonSubtitleStartupModeDialog = false },
+        )
+    }
+
     if (showSubtitleTextColorDialog) {
         SubtitleColorDialog(
             title = stringResource(Res.string.settings_playback_subtitle_text_color),
@@ -1771,6 +1824,45 @@ private fun PlaybackSettingsSection(
                 showSubtitleOutlineColorDialog = false
             },
             onDismiss = { showSubtitleOutlineColorDialog = false },
+        )
+    }
+
+    if (showSubtitleFontDialog) {
+        SubtitleFontDialog(
+            selectedFamily = autoPlayPlayerSettings.subtitleStyle.fontFamily,
+            customFontName = autoPlayPlayerSettings.subtitleStyle.customFontName,
+            customFontPath = autoPlayPlayerSettings.subtitleStyle.customFontPath,
+            onFamilySelected = { family ->
+                if (family != SubtitleFontFamily.Custom || !autoPlayPlayerSettings.subtitleStyle.customFontPath.isNullOrBlank()) {
+                    PlayerSettingsRepository.setSubtitleStyle(autoPlayPlayerSettings.subtitleStyle.copy(fontFamily = family))
+                    showSubtitleFontDialog = false
+                }
+            },
+            onImportFont = {
+                SubtitleFontFileBridge.importFont { result ->
+                    result.onSuccess { font ->
+                        PlayerSettingsRepository.setSubtitleStyle(
+                            autoPlayPlayerSettings.subtitleStyle.copy(
+                                fontFamily = SubtitleFontFamily.Custom,
+                                customFontName = font.displayName,
+                                customFontPath = font.path,
+                            ),
+                        )
+                    }
+                    showSubtitleFontDialog = false
+                }
+            },
+            onClearCustomFont = {
+                PlayerSettingsRepository.setSubtitleStyle(
+                    autoPlayPlayerSettings.subtitleStyle.copy(
+                        fontFamily = SubtitleFontFamily.System,
+                        customFontName = null,
+                        customFontPath = null,
+                    ),
+                )
+                showSubtitleFontDialog = false
+            },
+            onDismiss = { showSubtitleFontDialog = false },
         )
     }
 
@@ -2397,7 +2489,219 @@ private fun LibassRenderTypeDialog(
     }
 }
 
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun AddonSubtitleStartupModeDialog(
+    selectedMode: AddonSubtitleStartupMode,
+    onModeSelected: (AddonSubtitleStartupMode) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val options = listOf(
+        Triple(
+            AddonSubtitleStartupMode.FAST_STARTUP,
+            Res.string.settings_playback_addon_subtitle_startup_fast,
+            Res.string.settings_playback_addon_subtitle_startup_fast_description,
+        ),
+        Triple(
+            AddonSubtitleStartupMode.PREFERRED_ONLY,
+            Res.string.settings_playback_addon_subtitle_startup_preferred,
+            Res.string.settings_playback_addon_subtitle_startup_preferred_description,
+        ),
+        Triple(
+            AddonSubtitleStartupMode.ALL_SUBTITLES,
+            Res.string.settings_playback_addon_subtitle_startup_all,
+            Res.string.settings_playback_addon_subtitle_startup_all_description,
+        ),
+    )
 
+    BasicAlertDialog(
+        onDismissRequest = onDismiss,
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_addon_subtitle_startup_mode),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    options.forEach { (mode, titleRes, descriptionRes) ->
+                        val isSelected = mode == selectedMode
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onModeSelected(mode) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = containerColor,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(titleRes),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = stringResource(descriptionRes),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun SubtitleFontDialog(
+    selectedFamily: SubtitleFontFamily,
+    customFontName: String?,
+    customFontPath: String?,
+    onFamilySelected: (SubtitleFontFamily) -> Unit,
+    onImportFont: () -> Unit,
+    onClearCustomFont: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    BasicAlertDialog(
+        onDismissRequest = onDismiss,
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.compose_player_font_family),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SubtitleFontFamily.entries.forEach { family ->
+                        val customUnavailable = family == SubtitleFontFamily.Custom && customFontPath.isNullOrBlank()
+                        val label = subtitleFontFamilyLabel(family, customFontName)
+                        SubtitleFontOptionRow(
+                            label = label,
+                            selected = selectedFamily == family,
+                            enabled = !customUnavailable,
+                            onClick = { onFamilySelected(family) },
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(onClick = onImportFont) {
+                        Text(stringResource(Res.string.compose_player_font_import))
+                    }
+                    if (!customFontPath.isNullOrBlank()) {
+                        TextButton(onClick = onClearCustomFont) {
+                            Text(stringResource(Res.string.compose_player_font_clear_custom))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubtitleFontOptionRow(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (enabled) 1f else 0.45f)
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            Box(
+                modifier = Modifier.size(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selected) {
+                    Icon(
+                        imageVector = Icons.Rounded.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)

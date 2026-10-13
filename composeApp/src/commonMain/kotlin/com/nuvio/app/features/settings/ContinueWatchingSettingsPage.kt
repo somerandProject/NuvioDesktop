@@ -114,16 +114,14 @@ internal fun LazyListScope.continueWatchingSettingsContent(
             isTablet = isTablet,
         ) {
             SettingsGroup(isTablet = isTablet) {
-                if (style != ContinueWatchingSectionStyle.Poster) {
-                    SettingsSwitchRow(
-                        title = stringResource(Res.string.settings_continue_watching_use_episode_thumbnails_title),
-                        description = stringResource(Res.string.settings_continue_watching_use_episode_thumbnails_description),
-                        checked = useEpisodeThumbnails,
-                        isTablet = isTablet,
-                        onCheckedChange = ContinueWatchingPreferencesRepository::setUseEpisodeThumbnails,
-                    )
-                    SettingsGroupDivider(isTablet = isTablet)
-                }
+                SettingsSwitchRow(
+                    title = stringResource(Res.string.settings_continue_watching_use_episode_thumbnails_title),
+                    description = stringResource(Res.string.settings_continue_watching_use_episode_thumbnails_description),
+                    checked = useEpisodeThumbnails,
+                    isTablet = isTablet,
+                    onCheckedChange = ContinueWatchingPreferencesRepository::setUseEpisodeThumbnails,
+                )
+                SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
                     title = stringResource(Res.string.settings_continue_watching_up_next_title),
                     description = stringResource(Res.string.settings_continue_watching_up_next_description),
@@ -139,7 +137,7 @@ internal fun LazyListScope.continueWatchingSettingsContent(
                     isTablet = isTablet,
                     onCheckedChange = ContinueWatchingPreferencesRepository::setShowUnairedNextUp,
                 )
-                if (style != ContinueWatchingSectionStyle.Poster && useEpisodeThumbnails) {
+                if (useEpisodeThumbnails) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsSwitchRow(
                         title = stringResource(Res.string.settings_continue_watching_blur_next_up_title),

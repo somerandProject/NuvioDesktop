@@ -2,7 +2,6 @@ package com.nuvio.app.features.plugins
 
 import co.touchlab.kermit.Logger
 import com.nuvio.app.core.network.SupabaseProvider
-import com.nuvio.app.features.addons.encodeUnsafeHttpUrlCharacters
 import com.nuvio.app.features.addons.httpGetText
 import com.nuvio.app.features.profiles.ProfileRepository
 import com.nuvio.app.features.tmdb.TmdbService
@@ -77,6 +76,7 @@ actual object PluginRepository {
     actual val uiState: StateFlow<PluginsUiState> = _uiState.asStateFlow()
 
     private var initialized = false
+    private var pulledFromServer = false
     private var currentProfileId = 1
     private val activeRefreshJobs = mutableMapOf<String, Job>()
     private val persistenceGeneration = atomic(0L)
@@ -106,6 +106,7 @@ actual object PluginRepository {
         cancelActiveRefreshes()
         currentProfileId = effectiveProfileId
         initialized = false
+        pulledFromServer = false
         _uiState.value = PluginsUiState()
     }
 
@@ -114,6 +115,7 @@ actual object PluginRepository {
         persistenceGeneration.incrementAndGet()
         currentProfileId = 1
         initialized = false
+        pulledFromServer = false
         _uiState.value = PluginsUiState()
     }
 
@@ -130,6 +132,16 @@ actual object PluginRepository {
                 .decodeList<PluginRow>()
 
             val urls = dedupeManifestUrls(rows.map { it.url })
+            if (urls.isEmpty() && !pulledFromServer) {
+                val localUrls = _uiState.value.repositories.map { it.manifestUrl }
+                if (localUrls.isNotEmpty()) {
+                    initialize()
+                    pulledFromServer = true
+                    pushToServer()
+                    return
+                }
+            }
+
             val existingState = _uiState.value
             val existingReposByUrl = existingState.repositories.associateBy { it.manifestUrl }
             val nowEpochMs = currentEpochMillis()
@@ -160,6 +172,7 @@ actual object PluginRepository {
             _uiState.value = PluginsUiState(
                 pluginsEnabled = _uiState.value.pluginsEnabled,
                 groupStreamsByRepository = _uiState.value.groupStreamsByRepository,
+                excludedQualities = _uiState.value.excludedQualities,
                 repositories = nextRepos,
                 scrapers = nextScrapers,
             )
@@ -169,6 +182,7 @@ actual object PluginRepository {
                 refreshRepository(repository.manifestUrl, pushAfterRefresh = false)
             }
 
+            pulledFromServer = true
             initialized = true
         }.onFailure { error ->
             log.e(error) { "pullFromServer failed" }
@@ -251,7 +265,6 @@ actual object PluginRepository {
                 }
 
                 _uiState.update { state ->
-                    if (state.repositories.none { it.manifestUrl == manifestUrl }) return@update state
                     result.fold(
                         onSuccess = { (repo, scrapers) ->
                             val updatedRepos = state.repositories.map { existing ->
@@ -307,6 +320,34 @@ actual object PluginRepository {
         persist()
     }
 
+    actual fun toggleRepositoryScrapers(repositoryUrl: String, enabled: Boolean) {
+        initialize()
+        _uiState.update { state ->
+            state.copy(
+                scrapers = state.scrapers.map { scraper ->
+                    if (scraper.repositoryUrl == repositoryUrl) {
+                        scraper.copy(enabled = if (scraper.manifestEnabled) enabled else false)
+                    } else {
+                        scraper
+                    }
+                },
+            )
+        }
+        persist()
+    }
+
+    actual fun toggleAllScrapers(enabled: Boolean) {
+        initialize()
+        _uiState.update { state ->
+            state.copy(
+                scrapers = state.scrapers.map { scraper ->
+                    scraper.copy(enabled = if (scraper.manifestEnabled) enabled else false)
+                },
+            )
+        }
+        persist()
+    }
+
     actual fun setPluginsEnabled(enabled: Boolean) {
         initialize()
         _uiState.update { it.copy(pluginsEnabled = enabled) }
@@ -319,8 +360,17 @@ actual object PluginRepository {
         persist()
     }
 
-    actual fun setLocalPluginSearchPaused(paused: Boolean) {
-        PluginRuntime.setSearchPaused(paused)
+    actual fun setQualityExcluded(qualityId: String, excluded: Boolean) {
+        initialize()
+        _uiState.update { state ->
+            val nextExcluded = if (excluded) {
+                state.excludedQualities + qualityId
+            } else {
+                state.excludedQualities - qualityId
+            }
+            state.copy(excludedQualities = nextExcluded)
+        }
+        persist()
     }
 
     actual fun getEnabledScrapersForType(type: String): List<PluginScraper> {
@@ -339,13 +389,12 @@ actual object PluginRepository {
         val mediaType = if (scraper.supportsType("movie")) "movie" else "tv"
         val season = if (mediaType == "tv") 1 else null
         val episode = if (mediaType == "tv") 1 else null
-        return executeScraperInternal(
+        return executeScraper(
             scraper = scraper,
             tmdbId = "603",
             mediaType = mediaType,
             season = season,
             episode = episode,
-            respectSearchPause = false,
         )
     }
 
@@ -355,22 +404,6 @@ actual object PluginRepository {
         mediaType: String,
         season: Int?,
         episode: Int?,
-    ): Result<List<PluginRuntimeResult>> = executeScraperInternal(
-        scraper = scraper,
-        tmdbId = tmdbId,
-        mediaType = mediaType,
-        season = season,
-        episode = episode,
-        respectSearchPause = true,
-    )
-
-    private suspend fun executeScraperInternal(
-        scraper: PluginScraper,
-        tmdbId: String,
-        mediaType: String,
-        season: Int?,
-        episode: Int?,
-        respectSearchPause: Boolean,
     ): Result<List<PluginRuntimeResult>> {
         val resolvedTmdbId = resolvePluginTmdbId(
             tmdbId = tmdbId,
@@ -385,7 +418,6 @@ actual object PluginRepository {
                 season = season,
                 episode = episode,
                 scraperId = scraper.id,
-                respectSearchPause = respectSearchPause,
             )
         }
     }
@@ -474,11 +506,11 @@ actual object PluginRepository {
     }
 
     private fun PluginManifestScraper.isSupportedOnCurrentPlatform(): Boolean {
-        val platformTags = currentPluginPlatformTags().map { it.lowercase() }.toSet()
+        val platform = currentPluginPlatform().lowercase()
         val supported = supportedPlatforms?.map { it.lowercase() }?.toSet().orEmpty()
         val disabled = disabledPlatforms?.map { it.lowercase() }?.toSet().orEmpty()
-        if (supported.isNotEmpty() && platformTags.none { it in supported }) return false
-        if (platformTags.any { it in disabled }) return false
+        if (supported.isNotEmpty() && platform !in supported) return false
+        if (platform in disabled) return false
         return true
     }
 
@@ -590,6 +622,7 @@ actual object PluginRepository {
 
         if (currentProfileId != profileId) {
             cancelActiveRefreshes()
+            pulledFromServer = false
         }
 
         currentProfileId = profileId
@@ -615,6 +648,7 @@ actual object PluginRepository {
             state = PluginsUiState(
                 pluginsEnabled = stored?.pluginsEnabled ?: true,
                 groupStreamsByRepository = stored?.groupStreamsByRepository ?: false,
+                excludedQualities = stored?.excludedQualities.orEmpty(),
                 repositories = stored?.repositories
                     ?.map {
                         PluginRepositoryItem(
@@ -642,8 +676,7 @@ actual object PluginRepository {
         val path = url.substringBefore("?").trimEnd('/')
         val query = url.substringAfter("?", "")
         val withSuffix = if (path.endsWith("/manifest.json")) path else "$path/manifest.json"
-        val manifestUrl = if (query.isEmpty()) withSuffix else "$withSuffix?$query"
-        return manifestUrl.encodeUnsafeHttpUrlCharacters()
+        return if (query.isEmpty()) withSuffix else "$withSuffix?$query"
     }
 
     private fun normalizeManifestUrl(rawUrl: String): String {
@@ -659,12 +692,19 @@ actual object PluginRepository {
         val query = withoutFragment.substringAfter("?", "")
         val path = withoutFragment.substringBefore("?").trimEnd('/')
         val manifestPath = if (path.endsWith("/manifest.json")) path else "$path/manifest.json"
-        val manifestUrl = if (query.isEmpty()) manifestPath else "$manifestPath?$query"
-        return manifestUrl.encodeUnsafeHttpUrlCharacters()
+        return if (query.isEmpty()) manifestPath else "$manifestPath?$query"
     }
 
     private fun resolveEffectiveProfileId(profileId: Int): Int {
         val active = ProfileRepository.state.value.activeProfile
-        return if (active != null && !active.id.isBlank() && active.usesPrimaryPlugins) 1 else profileId
+        return if (
+            active != null &&
+            active.profileIndex != 1 &&
+            (active.usesPrimaryPlugins || active.usesPrimaryAddons)
+        ) {
+            1
+        } else {
+            profileId
+        }
     }
 }

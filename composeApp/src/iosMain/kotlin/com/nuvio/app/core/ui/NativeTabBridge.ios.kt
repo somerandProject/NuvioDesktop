@@ -7,10 +7,12 @@ import platform.UIKit.UIUserInterfaceIdiomPhone
 
 private const val liquidGlassNativeTabBarEnabledKey = "NuvioLiquidGlassNativeTabBarEnabled"
 private const val nativeTabBarVisibleKey = "NuvioNativeTabBarVisible"
+private const val nativeLiveTvEnabledKey = "NuvioNativeLiveTvEnabled"
 private const val nativeSelectedTabKey = "NuvioNativeSelectedTab"
 private const val nativeTabAccentColorKey = "NuvioNativeTabAccentColor"
 private const val nativeTabTitleHomeKey = "NuvioNativeTabTitleHome"
 private const val nativeTabTitleSearchKey = "NuvioNativeTabTitleSearch"
+private const val nativeTabTitleLiveTvKey = "NuvioNativeTabTitleLiveTv"
 private const val nativeTabTitleLibraryKey = "NuvioNativeTabTitleLibrary"
 private const val nativeTabTitleProfileKey = "NuvioNativeTabTitleProfile"
 private const val nativeProfileNameKey = "NuvioNativeProfileName"
@@ -32,6 +34,10 @@ internal actual fun publishNativeTabBarVisible(visible: Boolean) {
     publishBool(nativeTabBarVisibleKey, visible)
 }
 
+internal actual fun publishNativeLiveTvEnabled(enabled: Boolean) {
+    publishBool(nativeLiveTvEnabledKey, enabled)
+}
+
 internal actual fun publishNativeSelectedTab(tabName: String) {
     NSUserDefaults.standardUserDefaults.setObject(tabName, forKey = nativeSelectedTabKey)
     notifyNativeTabChromeChanged()
@@ -45,11 +51,13 @@ internal actual fun publishNativeTabAccentColor(hexColor: String) {
 internal actual fun publishNativeTabTitles(
     home: String,
     search: String,
+    liveTv: String,
     library: String,
     profile: String,
 ) {
     publishString(nativeTabTitleHomeKey, home)
     publishString(nativeTabTitleSearchKey, search)
+    publishString(nativeTabTitleLiveTvKey, liveTv)
     publishString(nativeTabTitleLibraryKey, library)
     publishString(nativeTabTitleProfileKey, profile)
     notifyNativeTabChromeChanged()

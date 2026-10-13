@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.asPaddingValues
@@ -44,51 +43,18 @@ import dev.chrisbanes.haze.hazeEffect
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
-/**
- * Scroll-aware state for the floating navigation bar.
- * Tracks scroll direction and exposes a label visibility fraction (1 = fully visible, 0 = hidden).
- */
-import com.nuvio.app.AppScreenTab
-import com.nuvio.app.features.settings.NavBarStyle
-
 @Stable
 class NuvioNavBarScrollState {
-    /** 1f = labels fully visible (expanded), 0f = labels hidden (collapsed, icons only) */
     var labelVisibility by mutableFloatStateOf(1f)
         private set
 
-    /** Accumulated scroll distance from top of page for current active tab */
-    var totalScrollOffset by mutableFloatStateOf(0f)
-        private set
-
-    private var currentTab: AppScreenTab = AppScreenTab.Home
-    private val tabScrollOffsets = mutableMapOf<AppScreenTab, Float>()
     private var accumulatedDelta = 0f
 
-    /** Call when user switches tabs to restore that tab's scroll offset */
-    fun switchToTab(tab: AppScreenTab) {
-        currentTab = tab
-        labelVisibility = 1f
-        accumulatedDelta = 0f
-        totalScrollOffset = tabScrollOffsets[tab] ?: 0f
-    }
-
-    /** Call to expand (show labels) – e.g. when user scrolls back to top */
     fun expand() {
         labelVisibility = 1f
         accumulatedDelta = 0f
     }
 
-    /** Synchronize current scroll offset for a specific tab from child LazyColumn/scroll containers */
-    fun updateScrollOffset(tab: AppScreenTab, offset: Float) {
-        val newOffset = offset.coerceAtLeast(0f)
-        tabScrollOffsets[tab] = newOffset
-        if (tab == currentTab) {
-            totalScrollOffset = newOffset
-        }
-    }
-
-    /** Call to collapse (hide labels) */
     fun collapse() {
         labelVisibility = 0f
         accumulatedDelta = 0f
@@ -102,20 +68,17 @@ class NuvioNavBarScrollState {
             accumulatedDelta += deltaY
 
             if (accumulatedDelta < -SCROLL_THRESHOLD && labelVisibility != 0f) {
-                // Scrolling down past threshold → snap collapse
                 labelVisibility = 0f
                 accumulatedDelta = 0f
             } else if (accumulatedDelta > SCROLL_THRESHOLD && labelVisibility != 1f) {
-                // Scrolling up past threshold → snap expand
                 labelVisibility = 1f
                 accumulatedDelta = 0f
             }
 
-            // Reset accumulator if direction changed
             if (deltaY < 0f && accumulatedDelta > 0f) accumulatedDelta = deltaY
             if (deltaY > 0f && accumulatedDelta < 0f) accumulatedDelta = deltaY
 
-            return Offset.Zero // Don't consume any scroll
+            return Offset.Zero
         }
     }
 
@@ -125,33 +88,18 @@ class NuvioNavBarScrollState {
 }
 
 @Composable
-fun rememberNuvioNavBarScrollState(): NuvioNavBarScrollState {
-    return androidx.compose.runtime.remember { NuvioNavBarScrollState() }
-}
+fun rememberNuvioNavBarScrollState(): NuvioNavBarScrollState =
+    androidx.compose.runtime.remember { NuvioNavBarScrollState() }
 
-/**
- * Floating pill-shaped navigation bar with scroll-responsive labels.
- *
- * @param hazeState Optional [HazeState] whose source is placed on the content behind this bar.
- *                  When provided, the pill gets a blur-through effect.
- */
 @Composable
 fun NuvioNavigationBar(
     modifier: Modifier = Modifier,
     scrollState: NuvioNavBarScrollState? = null,
     hazeState: HazeState? = null,
-    navBarStyle: NavBarStyle = NavBarStyle.ADAPTIVE,
-    contentPadding: PaddingValues = floatingNavigationBarPadding(),
-    compactSize: Boolean = false,
     content: @Composable NuvioNavigationBarScope.() -> Unit,
 ) {
-    val targetLabelFraction = when (navBarStyle) {
-        NavBarStyle.EXPANDED -> 1f
-        NavBarStyle.COMPACT -> 0f
-        else -> scrollState?.labelVisibility ?: 1f
-    }
     val labelFraction by animateFloatAsState(
-        targetValue = targetLabelFraction,
+        targetValue = scrollState?.labelVisibility ?: 1f,
         animationSpec = tween(
             durationMillis = NuvioTokens.Motion.sheetEnterMillis,
             easing = NuvioTokens.Motion.standard,
@@ -159,19 +107,18 @@ fun NuvioNavigationBar(
         label = "nav_label_alpha",
     )
 
-    // Dynamic horizontal padding: pill shrinks when labels are hidden — driven by same labelFraction
+    val navigationBarInsets = nuvioBottomNavigationBarInsets()
+    val bottomSafePadding = navigationBarInsets.asPaddingValues().calculateBottomPadding()
     val expandedHorizontalPadding = 28.dp
     val collapsedHorizontalPadding = 58.dp
     val horizontalPadding = expandedHorizontalPadding + (collapsedHorizontalPadding - expandedHorizontalPadding) * (1f - labelFraction)
 
-    // Outer container — no background, just safe padding
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(contentPadding),
+            .padding(bottom = bottomSafePadding + nuvioBottomNavigationExtraVerticalPadding + NuvioTokens.Space.s8),
         contentAlignment = Alignment.BottomCenter,
     ) {
-        // The floating pill
         val pillModifier = Modifier
             .padding(horizontal = horizontalPadding)
             .fillMaxWidth()
@@ -201,7 +148,6 @@ fun NuvioNavigationBar(
                 NuvioNavigationBarScopeImpl(
                     rowScope = this,
                     labelFraction = labelFraction,
-                    compactSize = compactSize,
                 ).content()
             }
         }
@@ -242,10 +188,7 @@ interface NuvioNavigationBarScope {
 private class NuvioNavigationBarScopeImpl(
     private val rowScope: androidx.compose.foundation.layout.RowScope,
     private val labelFraction: Float,
-    private val compactSize: Boolean,
 ) : NuvioNavigationBarScope {
-    private val iconSize = if (compactSize) 24.dp else 28.dp
-    private val itemVerticalPadding = if (compactSize) 4.dp else NuvioTokens.Space.s6
 
     @Composable
     override fun NavItem(
@@ -257,15 +200,12 @@ private class NuvioNavigationBarScopeImpl(
         label: String?,
     ) {
         val tokens = MaterialTheme.nuvio
-        val palette = MaterialTheme.themePalette
         val iconColor by animateColorAsState(
             targetValue = if (selected) tokens.colors.accent else tokens.colors.textMuted,
             label = "nav_icon_color",
         )
-        // Selected item gets a pill-shaped highlight using accent at low opacity
         val selectedBgColor by animateColorAsState(
-            targetValue = if (selected) tokens.colors.accent.copy(alpha = NuvioTokens.Opacity.selected)
-            else Color.Transparent,
+            targetValue = if (selected) tokens.colors.accent.copy(alpha = NuvioTokens.Opacity.selected) else Color.Transparent,
             label = "nav_bg_color",
         )
 
@@ -281,18 +221,16 @@ private class NuvioNavigationBarScopeImpl(
                         role = Role.Tab,
                         onClick = onClick,
                     )
-                    .padding(vertical = itemVerticalPadding),
+                    .padding(vertical = NuvioTokens.Space.s6),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(
-                    modifier = Modifier
-                        .size(iconSize)
-                        .then(if (selected) Modifier.gradientMask(palette.accentBrush()) else Modifier),
+                    modifier = Modifier.size(28.dp),
                     imageVector = icon,
                     contentDescription = contentDescription,
-                    tint = if (selected) Color.White else iconColor,
+                    tint = iconColor,
                 )
-                NavItemLabel(label = label, labelFraction = labelFraction, iconColor = iconColor, selected = selected, compactSize = compactSize)
+                NavItemLabel(label = label, labelFraction = labelFraction, iconColor = iconColor, selected = selected)
             }
         }
     }
@@ -307,14 +245,12 @@ private class NuvioNavigationBarScopeImpl(
         label: String?,
     ) {
         val tokens = MaterialTheme.nuvio
-        val palette = MaterialTheme.themePalette
         val iconColor by animateColorAsState(
             targetValue = if (selected) tokens.colors.accent else tokens.colors.textMuted,
             label = "nav_icon_color",
         )
         val selectedBgColor by animateColorAsState(
-            targetValue = if (selected) tokens.colors.accent.copy(alpha = NuvioTokens.Opacity.selected)
-            else Color.Transparent,
+            targetValue = if (selected) tokens.colors.accent.copy(alpha = NuvioTokens.Opacity.selected) else Color.Transparent,
             label = "nav_bg_color",
         )
 
@@ -330,18 +266,16 @@ private class NuvioNavigationBarScopeImpl(
                         role = Role.Tab,
                         onClick = onClick,
                     )
-                    .padding(vertical = itemVerticalPadding),
+                    .padding(vertical = NuvioTokens.Space.s6),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(
-                    modifier = Modifier
-                        .size(iconSize)
-                        .then(if (selected) Modifier.gradientMask(palette.accentBrush()) else Modifier),
+                    modifier = Modifier.size(28.dp),
                     painter = painterResource(icon),
                     contentDescription = contentDescription,
-                    tint = if (selected) Color.White else iconColor,
+                    tint = iconColor,
                 )
-                NavItemLabel(label = label, labelFraction = labelFraction, iconColor = iconColor, selected = selected, compactSize = compactSize)
+                NavItemLabel(label = label, labelFraction = labelFraction, iconColor = iconColor, selected = selected)
             }
         }
     }
@@ -356,8 +290,7 @@ private class NuvioNavigationBarScopeImpl(
     ) {
         val tokens = MaterialTheme.nuvio
         val selectedBgColor by animateColorAsState(
-            targetValue = if (selected) tokens.colors.accent.copy(alpha = NuvioTokens.Opacity.selected)
-            else Color.Transparent,
+            targetValue = if (selected) tokens.colors.accent.copy(alpha = NuvioTokens.Opacity.selected) else Color.Transparent,
             label = "nav_bg_color",
         )
         val iconColor by animateColorAsState(
@@ -377,15 +310,11 @@ private class NuvioNavigationBarScopeImpl(
                         role = Role.Tab,
                         onClick = onClick,
                     )
-                    .padding(vertical = itemVerticalPadding),
+                    .padding(vertical = NuvioTokens.Space.s6),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (compactSize) {
-                    Box(Modifier.size(iconSize), contentAlignment = Alignment.Center) { content() }
-                } else {
-                    content()
-                }
-                NavItemLabel(label = label, labelFraction = labelFraction, iconColor = iconColor, selected = selected, compactSize = compactSize)
+                content()
+                NavItemLabel(label = label, labelFraction = labelFraction, iconColor = iconColor, selected = selected)
             }
         }
     }
@@ -397,10 +326,9 @@ private fun NavItemLabel(
     labelFraction: Float,
     iconColor: Color,
     selected: Boolean,
-    compactSize: Boolean,
 ) {
     if (label == null || labelFraction <= 0f) return
-    Spacer(modifier = Modifier.height((if (compactSize) 2.dp else NuvioTokens.Space.s3) * labelFraction))
+    Spacer(modifier = Modifier.height(NuvioTokens.Space.s3 * labelFraction))
     Box(
         modifier = Modifier
             .height(NuvioTokens.Space.s14 * labelFraction)
@@ -420,11 +348,6 @@ private fun NavItemLabel(
     }
 }
 
-
-/**
- * Classic flat navigation bar — the original pre-pill implementation.
- * No floating pill, no labels, no scroll behavior. Simple icon row with a top divider.
- */
 @Composable
 fun NuvioClassicNavigationBar(
     modifier: Modifier = Modifier,
@@ -462,7 +385,6 @@ private class NuvioClassicNavigationBarScopeImpl(
         label: String?,
     ) {
         val tokens = MaterialTheme.nuvio
-        val palette = MaterialTheme.themePalette
         val iconColor by animateColorAsState(
             targetValue = if (selected) tokens.colors.accent else tokens.colors.textMuted,
             label = "classic_nav_icon_color",
@@ -481,11 +403,10 @@ private class NuvioClassicNavigationBarScopeImpl(
                         onClick = onClick,
                     )
                     .padding(NuvioTokens.Space.s10)
-                    .size(tokens.components.navIconSize)
-                    .then(if (selected) Modifier.gradientMask(palette.accentBrush()) else Modifier),
+                    .size(tokens.components.navIconSize),
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = if (selected) Color.White else iconColor,
+                tint = iconColor,
             )
         }
     }
@@ -500,7 +421,6 @@ private class NuvioClassicNavigationBarScopeImpl(
         label: String?,
     ) {
         val tokens = MaterialTheme.nuvio
-        val palette = MaterialTheme.themePalette
         val iconColor by animateColorAsState(
             targetValue = if (selected) tokens.colors.accent else tokens.colors.textMuted,
             label = "classic_nav_icon_color",
@@ -519,11 +439,10 @@ private class NuvioClassicNavigationBarScopeImpl(
                         onClick = onClick,
                     )
                     .padding(NuvioTokens.Space.s10)
-                    .size(tokens.components.navIconSize)
-                    .then(if (selected) Modifier.gradientMask(palette.accentBrush()) else Modifier),
+                    .size(tokens.components.navIconSize),
                 painter = painterResource(icon),
                 contentDescription = contentDescription,
-                tint = if (selected) Color.White else iconColor,
+                tint = iconColor,
             )
         }
     }

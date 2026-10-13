@@ -59,7 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.nuvio.app.core.ui.NuvioAsyncImage as AsyncImage
+import coil3.compose.AsyncImage
 import co.touchlab.kermit.Logger
 import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.core.format.formatReleaseDateForDisplay
@@ -68,13 +68,9 @@ import com.nuvio.app.core.ui.NuvioAnimatedWatchedBadge
 import com.nuvio.app.core.ui.NuvioCardDepthSurface
 import com.nuvio.app.core.ui.NuvioProgressBar
 import com.nuvio.app.core.ui.nuvioCardDepth
-import com.nuvio.app.core.ui.nuvioDesktopDragScroll
 import com.nuvio.app.core.ui.nuvioHorizontalScrollBleed
 import com.nuvio.app.core.ui.posterCardClickable
-import com.nuvio.app.core.ui.secondaryClick
 import com.nuvio.app.features.details.MetaDetails
-import com.nuvio.app.isDesktop
-import com.nuvio.app.features.details.EpisodeRatingsVisibility
 import com.nuvio.app.features.details.MetaEpisodeCardStyle
 import com.nuvio.app.features.details.MetaVideo
 import com.nuvio.app.features.details.SeasonViewMode
@@ -108,8 +104,8 @@ fun DetailSeriesContent(
     progressByVideoId: Map<String, WatchProgressEntry> = emptyMap(),
     watchedKeys: Set<String> = emptySet(),
     episodeRatings: Map<Pair<Int, Int>, Double> = emptyMap(),
-    episodeRatingsVisibility: EpisodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL,
     blurUnwatchedEpisodes: Boolean = false,
+    showEpisodeRatings: Boolean = true,
     onEpisodeClick: ((MetaVideo) -> Unit)? = null,
     onEpisodeLongPress: ((MetaVideo) -> Unit)? = null,
     onSeasonLongPress: ((Int) -> Unit)? = null,
@@ -178,7 +174,7 @@ fun DetailSeriesContent(
         val containerWidthDp = maxWidth.value
 
         Column(
-            verticalArrangement = Arrangement.spacedBy(if (isDesktop) 12.dp else 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             SeriesSeasonSelector(
                 meta = meta,
@@ -204,18 +200,17 @@ fun DetailSeriesContent(
                 },
                 label = "season_episodes",
             ) { seasonForContent ->
+                val sectionTitle = if (meta.type != "series" && seasons.size == 1 && seasonForContent <= 0) {
+                    stringResource(Res.string.details_videos)
+                } else {
+                    seasonForContent.label()
+                }
                 Column(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    if (!isDesktop || seasons.size <= 1) {
-                        DetailSectionTitle(
-                            title = if (meta.type != "series" && seasonForContent <= 0) {
-                                stringResource(Res.string.details_videos)
-                            } else {
-                                seasonForContent.label()
-                            },
-                        )
-                    }
+                    DetailSectionTitle(
+                        title = sectionTitle,
+                    )
                     val seasonEpisodes = groupedEpisodes.getValue(seasonForContent)
                     if (episodeCardStyle == MetaEpisodeCardStyle.Horizontal) {
                         EpisodeHorizontalRow(
@@ -228,13 +223,9 @@ fun DetailSeriesContent(
                             fallbackImage = meta.background ?: meta.poster,
                             progressByVideoId = progressByVideoId,
                             episodeRatings = episodeRatings,
-                            episodeRatingsVisibility = episodeRatingsVisibility,
                             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
-                            preferredEpisodeNumber = preferredEpisodeNumberForSeason(
-                                displayedSeasonNumber = seasonForContent,
-                                preferredSeasonNumber = preferredSeasonNumber,
-                                preferredEpisodeNumber = preferredEpisodeNumber,
-                            ),
+                            showEpisodeRatings = showEpisodeRatings,
+                            preferredEpisodeNumber = preferredEpisodeNumber,
                             onEpisodeClick = onEpisodeClick,
                             onEpisodeLongPress = onEpisodeLongPress,
                         )
@@ -249,20 +240,21 @@ fun DetailSeriesContent(
                                     episodeNumber = episode.episode,
                                     fallbackVideoId = episode.id,
                                 )
+                                val isWatched = progressByVideoId[episodeVideoId]?.isEffectivelyCompleted == true ||
+                                    WatchingState.isEpisodeWatched(
+                                        watchedKeys = watchedKeys,
+                                        metaType = meta.type,
+                                        metaId = meta.id,
+                                        episode = episode,
+                                    )
                                 EpisodeListCard(
                                     video = episode,
                                     fallbackImage = meta.background ?: meta.poster,
                                     progressEntry = progressByVideoId[episodeVideoId],
-                                    imdbRating = episode.seasonEpisodeKey()?.let { episodeRatings[it] } ?: episode.rating,
-                                    isWatched = progressByVideoId[episodeVideoId]?.isEffectivelyCompleted == true ||
-                                        WatchingState.isEpisodeWatched(
-                                            watchedKeys = watchedKeys,
-                                            metaType = meta.type,
-                                            metaId = meta.id,
-                                            episode = episode,
-                                        ),
-                                    episodeRatingsVisibility = episodeRatingsVisibility,
+                                    imdbRating = if (isWatched) episode.resolvedEpisodeRating(episodeRatings) else null,
+                                    isWatched = isWatched,
                                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                                    showEpisodeRatings = showEpisodeRatings && isWatched,
                                     sizing = sizing,
                                     onClick = { onEpisodeClick?.invoke(episode) },
                                     onLongPress = { onEpisodeLongPress?.invoke(episode) },
@@ -289,7 +281,7 @@ internal fun DetailSeriesListHeader(
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val sizing = seriesContentSizing(maxWidth.value)
-        Column(verticalArrangement = Arrangement.spacedBy(if (isDesktop) 12.dp else 16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SeriesSeasonSelector(
                 meta = meta,
                 seasons = seasons,
@@ -300,15 +292,13 @@ internal fun DetailSeriesListHeader(
                 onSelect = onSeasonSelect,
                 onLongPress = onSeasonLongPress,
             )
-            if (seasons.size == 1) {
-                DetailSectionTitle(
-                    title = if (meta.type != "series" && currentSeason <= 0) {
-                        stringResource(Res.string.details_videos)
-                    } else {
-                        currentSeason.label()
-                    },
-                )
-            }
+            DetailSectionTitle(
+                title = if (meta.type != "series" && seasons.size == 1 && currentSeason <= 0) {
+                    stringResource(Res.string.details_videos)
+                } else {
+                    currentSeason.label()
+                },
+            )
         }
     }
 }
@@ -320,7 +310,6 @@ internal fun DetailSeriesListEpisode(
     progressByVideoId: Map<String, WatchProgressEntry>,
     watchedKeys: Set<String>,
     episodeRatings: Map<Pair<Int, Int>, Double>,
-    episodeRatingsVisibility: EpisodeRatingsVisibility,
     blurUnwatchedEpisodes: Boolean,
     onEpisodeClick: ((MetaVideo) -> Unit)?,
     onEpisodeLongPress: ((MetaVideo) -> Unit)?,
@@ -334,20 +323,21 @@ internal fun DetailSeriesListEpisode(
             episodeNumber = episode.episode,
             fallbackVideoId = episode.id,
         )
+        val isWatched = progressByVideoId[episodeVideoId]?.isEffectivelyCompleted == true ||
+            WatchingState.isEpisodeWatched(
+                watchedKeys = watchedKeys,
+                metaType = meta.type,
+                metaId = meta.id,
+                episode = episode,
+            )
         EpisodeListCard(
             video = episode,
             fallbackImage = meta.background ?: meta.poster,
             progressEntry = progressByVideoId[episodeVideoId],
-            imdbRating = episode.seasonEpisodeKey()?.let { episodeRatings[it] } ?: episode.rating,
-            isWatched = progressByVideoId[episodeVideoId]?.isEffectivelyCompleted == true ||
-                WatchingState.isEpisodeWatched(
-                    watchedKeys = watchedKeys,
-                    metaType = meta.type,
-                    metaId = meta.id,
-                    episode = episode,
-                ),
-            episodeRatingsVisibility = episodeRatingsVisibility,
+            imdbRating = if (isWatched) episode.resolvedEpisodeRating(episodeRatings) else null,
+            isWatched = isWatched,
             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+            showEpisodeRatings = isWatched,
             sizing = sizing,
             onClick = { onEpisodeClick?.invoke(episode) },
             onLongPress = { onEpisodeLongPress?.invoke(episode) },
@@ -384,11 +374,7 @@ private fun SeriesSeasonSelector(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (isDesktop) {
-                Arrangement.spacedBy(12.dp)
-            } else {
-                Arrangement.SpaceBetween
-            },
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -462,10 +448,16 @@ private fun SeasonViewModeToggle(
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            .background(
+                if (isPosters) {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                },
+            )
             .border(
                 width = 1.dp,
-                color = Color.White.copy(alpha = 0.2f),
+                color = Color.White.copy(alpha = if (isPosters) 0.2f else 0.3f),
                 shape = RoundedCornerShape(8.dp),
             )
             .clickable(onClick = onClick)
@@ -482,7 +474,11 @@ private fun SeasonViewModeToggle(
                 fontSize = sizing.seasonToggleTextSize,
                 fontWeight = FontWeight.SemiBold,
             ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (isPosters) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onBackground
+            },
         )
     }
 }
@@ -516,15 +512,12 @@ private fun SeasonTextChipScrollRow(
         state = seasonListState,
         modifier = Modifier
             .nuvioHorizontalScrollBleed(horizontalScrollPadding)
-            .fillMaxWidth()
-            .nuvioDesktopDragScroll(seasonListState)
-            .let { if (isDesktop) it.padding(bottom = 4.dp) else it },
+            .fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = horizontalScrollPadding),
         horizontalArrangement = Arrangement.spacedBy(sizing.seasonChipGap),
     ) {
         items(seasons, key = { season -> season }) { season ->
             val isSelected = season == currentSeason
-            val onSecondaryClick = onLongPress?.let { handler -> { handler(season) } }
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(sizing.seasonChipRadius))
@@ -537,9 +530,8 @@ private fun SeasonTextChipScrollRow(
                     )
                     .combinedClickable(
                         onClick = { onSelect(season) },
-                        onLongClick = onSecondaryClick,
+                        onLongClick = onLongPress?.let { handler -> { handler(season) } },
                     )
-                    .secondaryClick(onSecondaryClick)
                     .padding(
                         horizontal = sizing.seasonChipHorizontalPadding,
                         vertical = sizing.seasonChipVerticalPadding,
@@ -593,9 +585,7 @@ private fun SeasonPosterScrollRow(
         state = seasonListState,
         modifier = Modifier
             .nuvioHorizontalScrollBleed(horizontalScrollPadding)
-            .fillMaxWidth()
-            .nuvioDesktopDragScroll(seasonListState)
-            .let { if (isDesktop) it.padding(bottom = 4.dp) else it },
+            .fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = horizontalScrollPadding),
         horizontalArrangement = Arrangement.spacedBy(sizing.seasonChipGap),
     ) {
@@ -640,7 +630,10 @@ private fun SeasonPosterButton(
     Column(
         modifier = Modifier
             .width(sizing.seasonPosterWidth)
-            .posterCardClickable(onClick = onClick, onLongClick = onLongClick),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(
@@ -716,8 +709,8 @@ private fun EpisodeHorizontalRow(
     fallbackImage: String?,
     progressByVideoId: Map<String, WatchProgressEntry>,
     episodeRatings: Map<Pair<Int, Int>, Double>,
-    episodeRatingsVisibility: EpisodeRatingsVisibility,
     blurUnwatchedEpisodes: Boolean,
+    showEpisodeRatings: Boolean,
     preferredEpisodeNumber: Int? = null,
     onEpisodeClick: ((MetaVideo) -> Unit)?,
     onEpisodeLongPress: ((MetaVideo) -> Unit)?,
@@ -746,8 +739,7 @@ private fun EpisodeHorizontalRow(
         state = listState,
         modifier = Modifier
             .nuvioHorizontalScrollBleed(horizontalScrollPadding)
-            .fillMaxWidth()
-            .nuvioDesktopDragScroll(listState),
+            .fillMaxWidth(),
         contentPadding = PaddingValues(
             horizontal = horizontalScrollPadding + rowMetrics.rowHorizontalPadding,
             vertical = rowMetrics.rowVerticalPadding,
@@ -764,20 +756,21 @@ private fun EpisodeHorizontalRow(
                 episodeNumber = episode.episode,
                 fallbackVideoId = episode.id,
             )
+            val isWatched = progressByVideoId[episodeVideoId]?.isEffectivelyCompleted == true ||
+                WatchingState.isEpisodeWatched(
+                    watchedKeys = watchedKeys,
+                    metaType = metaType,
+                    metaId = parentMetaId,
+                    episode = episode,
+                )
             EpisodeHorizontalCard(
                 video = episode,
                 fallbackImage = fallbackImage,
                 progressEntry = progressByVideoId[episodeVideoId],
-                imdbRating = episode.seasonEpisodeKey()?.let { episodeRatings[it] } ?: episode.rating,
-                isWatched = progressByVideoId[episodeVideoId]?.isEffectivelyCompleted == true ||
-                    WatchingState.isEpisodeWatched(
-                        watchedKeys = watchedKeys,
-                        metaType = metaType,
-                        metaId = parentMetaId,
-                        episode = episode,
-                    ),
-                episodeRatingsVisibility = episodeRatingsVisibility,
+                imdbRating = if (isWatched) episode.resolvedEpisodeRating(episodeRatings) else null,
+                isWatched = isWatched,
                 blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                showEpisodeRatings = showEpisodeRatings && isWatched,
                 metrics = rowMetrics,
                 onClick = { onEpisodeClick?.invoke(episode) },
                 onLongPress = { onEpisodeLongPress?.invoke(episode) },
@@ -794,16 +787,15 @@ private fun EpisodeHorizontalCard(
     progressEntry: WatchProgressEntry?,
     imdbRating: Double?,
     isWatched: Boolean,
-    episodeRatingsVisibility: EpisodeRatingsVisibility,
     blurUnwatchedEpisodes: Boolean,
+    showEpisodeRatings: Boolean,
     metrics: EpisodeHorizontalCardMetrics,
     onClick: (() -> Unit)? = null,
     onLongPress: (() -> Unit)? = null,
 ) {
     val cardShape = RoundedCornerShape(metrics.cornerRadius)
-    val ratingLabel = remember(imdbRating, episodeRatingsVisibility, isWatched) {
-        imdbRating?.takeIf { it > 0.0 && episodeRatingsVisibility.showRating(isWatched) }
-            ?.let(::formatEpisodeRating)
+    val ratingLabel = remember(imdbRating, showEpisodeRatings) {
+        imdbRating?.takeIf { showEpisodeRatings && it > 0.0 }?.let(::formatEpisodeRating)
     }
     val formattedDate = remember(video.released) { video.released?.let { formatReleaseDateForDisplay(it) } }
     val runtimeLabel = remember(video.runtime) { video.runtime?.takeIf { it > 0 }?.let(::formatEpisodeRuntime) }
@@ -1180,18 +1172,16 @@ private fun EpisodeListCard(
     progressEntry: WatchProgressEntry?,
     imdbRating: Double?,
     isWatched: Boolean,
-    episodeRatingsVisibility: EpisodeRatingsVisibility,
     blurUnwatchedEpisodes: Boolean,
+    showEpisodeRatings: Boolean,
     sizing: SeriesContentSizing,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     onLongPress: (() -> Unit)? = null,
 ) {
-    val cornerRadius = rememberPosterCardStyleUiState().cornerRadiusDp.dp
-    val cardShape = RoundedCornerShape(cornerRadius)
-    val ratingLabel = remember(imdbRating, episodeRatingsVisibility, isWatched) {
-        imdbRating?.takeIf { it > 0.0 && episodeRatingsVisibility.showRating(isWatched) }
-            ?.let(::formatEpisodeRating)
+    val cardShape = RoundedCornerShape(sizing.cardRadius)
+    val ratingLabel = remember(imdbRating, showEpisodeRatings) {
+        imdbRating?.takeIf { showEpisodeRatings && it > 0.0 }?.let(::formatEpisodeRating)
     }
     val formattedDate = remember(video.released) { video.released?.let { formatReleaseDateForDisplay(it) } }
     Box(
@@ -1209,8 +1199,7 @@ private fun EpisodeListCard(
                 enabled = onClick != null || onLongPress != null,
                 onClick = { onClick?.invoke() },
                 onLongClick = onLongPress,
-            )
-            .secondaryClick(onLongPress),
+            ),
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),
@@ -1220,7 +1209,7 @@ private fun EpisodeListCard(
                 modifier = Modifier
                     .width(sizing.imageWidth)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(topStart = cornerRadius, bottomStart = cornerRadius)),
+                    .clip(RoundedCornerShape(topStart = sizing.cardRadius, bottomStart = sizing.cardRadius)),
             ) {
                 val imageUrl = video.thumbnail ?: fallbackImage
                 val shouldBlurArtwork = blurUnwatchedEpisodes && !isWatched
@@ -1359,6 +1348,7 @@ private data class SeriesContentSizing(
     val seasonPosterRadius: Dp,
     val cardHeight: Dp,
     val imageWidth: Dp,
+    val cardRadius: Dp,
     val cardGap: Dp,
     val contentHorizontalPadding: Dp,
     val contentVerticalPadding: Dp,
@@ -1391,6 +1381,7 @@ private fun seriesContentSizing(maxWidthDp: Float): SeriesContentSizing =
             seasonPosterRadius = 16.dp,
             cardHeight = 200.dp,
             imageWidth = 200.dp,
+            cardRadius = 20.dp,
             cardGap = 20.dp,
             contentHorizontalPadding = 20.dp,
             contentVerticalPadding = 18.dp,
@@ -1420,6 +1411,7 @@ private fun seriesContentSizing(maxWidthDp: Float): SeriesContentSizing =
             seasonPosterRadius = 14.dp,
             cardHeight = 180.dp,
             imageWidth = 180.dp,
+            cardRadius = 18.dp,
             cardGap = 18.dp,
             contentHorizontalPadding = 18.dp,
             contentVerticalPadding = 16.dp,
@@ -1449,6 +1441,7 @@ private fun seriesContentSizing(maxWidthDp: Float): SeriesContentSizing =
             seasonPosterRadius = 12.dp,
             cardHeight = 160.dp,
             imageWidth = 160.dp,
+            cardRadius = 16.dp,
             cardGap = 16.dp,
             contentHorizontalPadding = 16.dp,
             contentVerticalPadding = 14.dp,
@@ -1478,6 +1471,7 @@ private fun seriesContentSizing(maxWidthDp: Float): SeriesContentSizing =
             seasonPosterRadius = 8.dp,
             cardHeight = 120.dp,
             imageWidth = 120.dp,
+            cardRadius = 16.dp,
             cardGap = 16.dp,
             contentHorizontalPadding = 12.dp,
             contentVerticalPadding = 12.dp,
@@ -1515,6 +1509,9 @@ private fun MetaVideo.seasonEpisodeKey(): Pair<Int, Int>? {
     val episodeNumber = episode ?: return null
     return seasonNumber to episodeNumber
 }
+
+private fun MetaVideo.resolvedEpisodeRating(episodeRatings: Map<Pair<Int, Int>, Double>): Double? =
+    seasonEpisodeKey()?.let { episodeRatings[it] } ?: rating
 
 private fun formatEpisodeRating(rating: Double): String {
     val roundedTenths = (rating * 10.0).roundToInt()

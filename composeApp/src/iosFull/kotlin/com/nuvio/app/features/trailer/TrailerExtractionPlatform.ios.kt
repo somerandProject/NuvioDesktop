@@ -88,7 +88,7 @@ internal object TrailerExtractionPlatform {
             (bestProgressive == null || bestManifestHeight > bestProgressive.height)
 
         val combinedUrl = if (bestCombinedIsManifest) {
-            bestManifest.manifestUrl
+            bestManifest.selectedVariantUrl
         } else {
             bestProgressive?.url
         }

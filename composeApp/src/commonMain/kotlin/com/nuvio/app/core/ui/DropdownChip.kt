@@ -1,24 +1,21 @@
 package com.nuvio.app.core.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SheetState
@@ -33,9 +30,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.nuvio.app.isDesktop
 import kotlinx.coroutines.launch
 
 data class NuvioDropdownOption(
@@ -51,6 +48,7 @@ fun NuvioDropdownChip(
     selectedKey: String?,
     options: List<NuvioDropdownOption>,
     enabled: Boolean = true,
+    pillStyle: Boolean = false,
     onSelected: (NuvioDropdownOption) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -58,76 +56,72 @@ fun NuvioDropdownChip(
     var isSheetVisible by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
-
-    Box(modifier = modifier) {
-        Row(
-            modifier = Modifier
-                .clip(tokens.shapes.compactCard)
-                .background(tokens.colors.surface)
-                .then(
-                    if (enabled) {
-                        Modifier.clickable { isSheetVisible = true }
-                    } else {
-                        Modifier
-                    },
-                )
-                .padding(horizontal = NuvioTokens.Space.s12, vertical = tokens.components.chipVerticalPadding),
-            horizontalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s6),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (enabled) tokens.colors.textPrimary else tokens.colors.textDisabled,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Icon(
-                imageVector = Icons.Rounded.KeyboardArrowDown,
-                contentDescription = null,
-                modifier = Modifier.size(NuvioTokens.Icon.sm + NuvioTokens.Space.s2),
-                tint = if (enabled) tokens.colors.textMuted else tokens.colors.borderDefault,
-            )
-        }
-
-        if (isDesktop) {
-            DropdownMenu(
-                expanded = isSheetVisible,
-                onDismissRequest = { isSheetVisible = false },
-                modifier = Modifier.widthIn(min = 180.dp, max = 360.dp),
-                containerColor = tokens.colors.surfacePopover,
-                shape = tokens.shapes.compactCard,
-            ) {
-                options.forEach { option ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = option.label,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        trailingIcon = {
-                            if (option.key == selectedKey) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Check,
-                                    contentDescription = null,
-                                    tint = tokens.colors.accent,
-                                    modifier = Modifier.size(tokens.icons.md),
-                                )
-                            }
-                        },
-                        onClick = {
-                            onSelected(option)
-                            isSheetVisible = false
-                        },
-                    )
-                }
-            }
-        }
+    val selected = selectedKey != null
+    val shape = if (pillStyle) tokens.shapes.chip else tokens.shapes.compactCard
+    val containerColor = when {
+        pillStyle && selected -> tokens.colors.overlaySelected
+        else -> tokens.colors.surface
     }
 
-    if (isSheetVisible && !isDesktop) {
+    Row(
+        modifier = modifier
+            .clip(shape)
+            .background(containerColor)
+            .then(
+                if (pillStyle && !selected) {
+                    Modifier.border(
+                        width = NuvioTokens.Border.thin,
+                        color = tokens.colors.borderSubtle,
+                        shape = shape,
+                    )
+                } else {
+                    Modifier
+                },
+            )
+            .then(
+                if (enabled) {
+                    Modifier.clickable { isSheetVisible = true }
+                } else {
+                    Modifier
+                },
+            )
+            .padding(
+                horizontal = if (pillStyle) 16.dp else NuvioTokens.Space.s12,
+                vertical = if (pillStyle) 9.dp else tokens.components.chipVerticalPadding,
+            ),
+        horizontalArrangement = Arrangement.spacedBy(NuvioTokens.Space.s6),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = when {
+                !enabled -> tokens.colors.textDisabled
+                pillStyle && selected -> tokens.colors.accent
+                pillStyle -> tokens.colors.textSecondary
+                else -> tokens.colors.textPrimary
+            },
+            fontWeight = when {
+                pillStyle && selected -> FontWeight.SemiBold
+                pillStyle -> FontWeight.Medium
+                else -> FontWeight.Normal
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Icon(
+            imageVector = Icons.Rounded.KeyboardArrowDown,
+            contentDescription = null,
+            modifier = Modifier.size(NuvioTokens.Icon.sm + NuvioTokens.Space.s2),
+            tint = when {
+                !enabled -> tokens.colors.borderDefault
+                pillStyle && selected -> tokens.colors.accent
+                else -> tokens.colors.textMuted
+            },
+        )
+    }
+
+    if (isSheetVisible) {
         NuvioDropdownOptionsSheet(
             title = title,
             options = options,
@@ -186,11 +180,10 @@ private fun NuvioDropdownOptionsSheet(
                     .fillMaxWidth()
                     .heightIn(max = tokens.breakpoints.largePhone),
             ) {
-                items(options) { option ->
+                itemsIndexed(options) { index, option ->
                     NuvioBottomSheetActionRow(
                         title = option.label,
                         onClick = { onSelected(option) },
-                        selected = option.key == selectedKey,
                         trailingContent = {
                             if (option.key == selectedKey) {
                                 Icon(
@@ -202,6 +195,9 @@ private fun NuvioDropdownOptionsSheet(
                             }
                         },
                     )
+                    if (index < options.lastIndex) {
+                        NuvioBottomSheetDivider()
+                    }
                 }
             }
         }

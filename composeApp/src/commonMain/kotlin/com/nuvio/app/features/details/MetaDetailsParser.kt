@@ -8,11 +8,11 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -34,11 +34,10 @@ internal object MetaDetailsParser {
             id = meta.requiredString("id"),
             type = meta.requiredString("type"),
             name = meta.requiredString("name"),
-            imdbId = meta.string("imdb_id"),
             poster = meta.string("poster"),
-            background = meta.string("background") ?: meta.string("landscapePoster")?.takeIf(String::isNotBlank),
+            background = meta.string("background"),
             logo = meta.string("logo"),
-            description = meta.string("description"),
+            description = meta.string("description") ?: meta.string("overview"),
             releaseInfo = meta.string("releaseInfo"),
             lastAirDate = meta.string("lastAirDate"),
             status = meta.string("status"),
@@ -249,18 +248,14 @@ internal object MetaDetailsParser {
                 season = video.int("season"),
                 episode = video.int("episode"),
                 overview = video.string("overview") ?: video.string("description"),
-                runtime = parseRuntimeMinutes((video["runtime"] as? JsonPrimitive)?.contentOrNull),
-                rating = video.string("rating")?.trim()?.toDoubleOrNull()?.takeIf { it > 0.0 },
+                runtime = video.int("runtime"),
+                rating = video.rating("rating"),
                 streams = video.embeddedStreams(),
             )
         }
 
     private fun JsonObject.seasonPosters(videos: List<MetaVideo>): Map<Int, String> {
         val appExtras = this["app_extras"] as? JsonObject ?: return emptyMap()
-        val keyed = parseKeyedSeasonPosters(appExtras["seasonPosters"])
-            .ifEmpty { parseKeyedSeasonPosters(appExtras["seasonPosterByNumber"]) }
-        if (keyed.isNotEmpty()) return keyed
-
         val posters = appExtras["seasonPosters"] as? JsonArray ?: return emptyMap()
         val seasons = videos
             .mapNotNull(MetaVideo::season)
@@ -271,9 +266,6 @@ internal object MetaDetailsParser {
         val posterSeasons = when {
             seasons.size == posters.size -> seasons
             positiveSeasons.size == posters.size -> positiveSeasons
-            positiveSeasons.isNotEmpty() &&
-                posters.size == positiveSeasons.size + 1 &&
-                posters.firstOrNull() == JsonNull -> listOf(SPECIALS_SEASON_NUMBER) + positiveSeasons
             else -> List(posters.size) { index -> index + 1 }
         }
         return posters.mapIndexedNotNull { index, element ->
@@ -281,17 +273,6 @@ internal object MetaDetailsParser {
                 ?.trim()
                 ?.takeIf(String::isNotBlank)
                 ?.let { posterSeasons[index] to it }
-        }.toMap()
-    }
-
-    private fun parseKeyedSeasonPosters(element: JsonElement?): Map<Int, String> {
-        val posters = element as? JsonObject ?: return emptyMap()
-        return posters.entries.mapNotNull { (key, value) ->
-            val season = key.toIntOrNull() ?: return@mapNotNull null
-            (value as? JsonPrimitive)?.contentOrNull
-                ?.trim()
-                ?.takeIf(String::isNotBlank)
-                ?.let { season to it }
         }.toMap()
     }
 
@@ -383,6 +364,15 @@ internal object MetaDetailsParser {
 
     private fun JsonObject.long(name: String): Long? =
         this[name]?.jsonPrimitive?.longOrNull
+
+    private fun JsonObject.rating(name: String): Double? =
+        this[name]
+            ?.jsonPrimitive
+            ?.let { primitive ->
+                primitive.doubleOrNull
+                    ?: primitive.contentOrNull?.trim()?.substringBefore('/')?.toDoubleOrNull()
+            }
+            ?.takeIf { it > 0.0 }
 }
 
 private fun JsonElement?.asJsonObjectOrNull(): JsonObject? = this as? JsonObject

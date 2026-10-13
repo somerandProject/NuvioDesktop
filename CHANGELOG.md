@@ -4,6 +4,23 @@ All notable changes to this personal NuvioDev fork are documented here.
 This fork tracks the upstream [Nuvio Desktop](https://github.com/NuvioMedia/NuvioDesktop)
 project; all original work is credited there.
 
+## 0.4-alpha
+
+- **Android**: fully imported [NuvioMobile-Enhanced](https://github.com/yesnt10/NuvioMobile-Enhanced)
+  as the app codebase (replaces the previous mobile `cmp-rewrite` import). The
+  Android `applicationId` is now `com.nuviodev.app`, so the build installs
+  alongside the official Nuvio Enhanced app instead of conflicting with it.
+- **Shared core**: merged the Enhanced fork's restructured common code
+  (navigation shell, settings pages, player, streams repository) into the
+  desktop build, keeping NuvioDev's desktop-only features — in-app updater,
+  A-B loop, frame step, subtitle delay nudge, skip intro/outro, always-on-top,
+  minimize-to-tray, and the keyboard shortcut cheat-sheet.
+- **Settings**: restored NuvioDev's media-servers and CloudStream entries in the
+  content-discovery settings page on top of Enhanced's new settings layout.
+- Build: restored the `sentry-jvm-gradle` plugin and the coroutines / ktor-cio /
+  jna / savedstate / material-ripple catalog entries that were dropped while
+  resolving the merge.
+
 ## 0.3-alpha
 
 - **Android**: the release workflow now also builds **sideload APKs** (arm64-v8a,

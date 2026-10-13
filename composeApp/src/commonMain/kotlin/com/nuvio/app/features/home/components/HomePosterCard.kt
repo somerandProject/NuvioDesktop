@@ -1,14 +1,17 @@
 package com.nuvio.app.features.home.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.format.formatReleaseDateForDisplay
 import com.nuvio.app.core.ui.NuvioPosterCard
 import com.nuvio.app.core.ui.NuvioPosterShape
-import com.nuvio.app.core.ui.desktopCatalogShelfPosterBaseWidthDp
 import com.nuvio.app.core.ui.rememberPosterCardStyleUiState
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.PosterShape
+import com.nuvio.app.features.settings.NuvioEnhancedSettingsRepository
 
 @Composable
 fun HomePosterCard(
@@ -16,45 +19,39 @@ fun HomePosterCard(
     modifier: Modifier = Modifier,
     useLandscapeBackdropMode: Boolean = false,
     isWatched: Boolean = false,
+    hideReleaseDate: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
-    showLandscapeOverlay: Boolean = true,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
+    val enhancedSettings by remember {
+        NuvioEnhancedSettingsRepository.ensureLoaded()
+        NuvioEnhancedSettingsRepository.uiState
+    }.collectAsStateWithLifecycle()
     val isLandscapeMode = useLandscapeBackdropMode || posterCardStyle.catalogLandscapeModeEnabled
-    val effectiveLandscapePoster = if (posterCardStyle.alwaysShowLandscapeClearlogo) null else item.landscapePoster
-    val imageUrl = if (isLandscapeMode) {
-        effectiveLandscapePoster ?: item.banner ?: item.poster
-    } else item.poster
-    val fallbackImageUrl = if (isLandscapeMode && !effectiveLandscapePoster.isNullOrBlank()) {
-        // Landscape custom poster -> fall back to original backdrop, then portrait
-        item.banner ?: item.rawPosterUrl
-    } else {
-        item.rawPosterUrl
-    }
 
-    HomePosterHoverPreview(
-        item = item,
+    NuvioPosterCard(
+        title = item.name,
+        imageUrl = if (isLandscapeMode) (item.banner ?: item.poster) else item.poster,
+        modifier = modifier,
+        shape = if (isLandscapeMode) NuvioPosterShape.Landscape else item.posterShape.toNuvioPosterShape(),
+        detailLine = if (
+            isLandscapeMode ||
+            posterCardStyle.hideLabelsEnabled ||
+            hideReleaseDate ||
+            enhancedSettings.hideHomeReleaseDates
+        ) {
+            null
+        } else {
+            item.releaseInfo?.let { formatReleaseDateForDisplay(it) }
+        },
+        showTitleBelow = !posterCardStyle.hideLabelsEnabled,
+        bottomLeftLogoUrl = if (isLandscapeMode) item.logo else null,
+        bottomLeftText = if (isLandscapeMode && item.logo.isNullOrBlank() && !posterCardStyle.hideLabelsEnabled) item.name else null,
         isWatched = isWatched,
         onClick = onClick,
         onLongClick = onLongClick,
-    ) { hoverModifier ->
-        NuvioPosterCard(
-            title = item.name,
-            imageUrl = imageUrl,
-            modifier = modifier.then(hoverModifier),
-            fallbackImageUrl = fallbackImageUrl,
-            basePosterWidthDp = desktopCatalogShelfPosterBaseWidthDp(posterCardStyle.widthDp),
-            shape = if (isLandscapeMode) NuvioPosterShape.Landscape else item.posterShape.toNuvioPosterShape(),
-            detailLine = if (isLandscapeMode || posterCardStyle.hideLabelsEnabled) null else item.releaseInfo?.let { formatReleaseDateForDisplay(it) },
-            showTitleBelow = !posterCardStyle.hideLabelsEnabled,
-            bottomLeftLogoUrl = if (isLandscapeMode && showLandscapeOverlay && effectiveLandscapePoster.isNullOrBlank()) item.logo else null,
-            bottomLeftText = if (isLandscapeMode && showLandscapeOverlay && effectiveLandscapePoster.isNullOrBlank() && item.logo.isNullOrBlank() && !posterCardStyle.hideLabelsEnabled) item.name else null,
-            isWatched = isWatched,
-            onClick = onClick,
-            onLongClick = onLongClick,
-        )
-    }
+    )
 }
 
 private fun PosterShape.toNuvioPosterShape(): NuvioPosterShape =

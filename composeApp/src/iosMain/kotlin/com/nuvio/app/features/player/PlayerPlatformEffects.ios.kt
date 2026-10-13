@@ -5,8 +5,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import platform.Foundation.NSNotificationCenter
 import platform.MediaPlayer.MPVolumeView
 import platform.UIKit.UIApplication
@@ -16,46 +14,23 @@ import platform.UIKit.UISlider
 
 private const val lockPlayerToLandscapeNotification = "NuvioPlayerLockLandscape"
 private const val unlockPlayerOrientationNotification = "NuvioPlayerUnlockOrientation"
-private var playerLandscapeLockCount = 0
 
 @Composable
 actual fun LockPlayerToLandscape() {
     DisposableEffect(Unit) {
-        playerLandscapeLockCount += 1
-        if (playerLandscapeLockCount == 1) {
+        NSNotificationCenter.defaultCenter.postNotificationName(
+            lockPlayerToLandscapeNotification,
+            null,
+        )
+
+        onDispose {
             NSNotificationCenter.defaultCenter.postNotificationName(
-                lockPlayerToLandscapeNotification,
+                unlockPlayerOrientationNotification,
                 null,
             )
         }
-
-        onDispose {
-            playerLandscapeLockCount -= 1
-            if (playerLandscapeLockCount == 0) {
-                NSNotificationCenter.defaultCenter.postNotificationName(
-                    unlockPlayerOrientationNotification,
-                    null,
-                )
-            }
-        }
     }
 }
-
-@Composable
-actual fun FullscreenPlayerDialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            usePlatformInsets = false,
-            useSoftwareKeyboardInset = false,
-        ),
-        content = content,
-    )
-}
-
-@Composable
-actual fun HidePlayerSystemBars() = Unit
 
 @Composable
 actual fun EnterImmersivePlayerMode(keepScreenAwake: Boolean) {
@@ -76,14 +51,19 @@ actual fun ManagePlayerPictureInPicture(
     videoSize: IntSize,
 ) = Unit
 
-actual fun togglePlayerPictureInPicture() = Unit
-
 @Composable
 actual fun rememberIsInPictureInPicture(): Boolean = false
 
 @Composable
-internal actual fun rememberPlatformPlayerGestureController(): PlayerGestureController? {
-    val controller = remember { IOSPlayerGestureController() }
+actual fun rememberPlayerGestureController(): PlayerGestureController? {
+    PlayerSettingsRepository.ensureLoaded()
+    val playerSettings = PlayerSettingsRepository.uiState.value
+    val controller = remember {
+        IOSPlayerGestureController(
+            rememberBrightnessEnabled = playerSettings.rememberPlayerBrightnessEnabled,
+            rememberedBrightness = playerSettings.rememberedPlayerBrightness,
+        )
+    }
 
     DisposableEffect(controller) {
         onDispose {
@@ -94,7 +74,10 @@ internal actual fun rememberPlatformPlayerGestureController(): PlayerGestureCont
     return controller
 }
 
-private class IOSPlayerGestureController : PlayerGestureController {
+private class IOSPlayerGestureController(
+    private val rememberBrightnessEnabled: Boolean,
+    rememberedBrightness: Float?,
+) : PlayerGestureController {
     private val volumeView = MPVolumeView().apply {
         hidden = true
         alpha = 0.01
@@ -102,12 +85,21 @@ private class IOSPlayerGestureController : PlayerGestureController {
     private val originalBrightness = UIScreen.mainScreen.brightness
     private var brightnessRestored = false
 
+    init {
+        if (rememberBrightnessEnabled && rememberedBrightness != null) {
+            UIScreen.mainScreen.brightness = rememberedBrightness.coerceIn(0.02f, 1f).toDouble()
+        }
+    }
+
     override fun currentBrightness(): Float =
-        UIScreen.mainScreen.brightness.toFloat().coerceIn(0f, 1f)
+        UIScreen.mainScreen.brightness.toFloat().coerceIn(0.02f, 1f)
 
     override fun setBrightness(level: Float): Float {
-        val target = level.coerceIn(0f, 1f)
+        val target = level.coerceIn(0.02f, 1f)
         UIScreen.mainScreen.brightness = target.toDouble()
+        if (rememberBrightnessEnabled) {
+            PlayerSettingsRepository.setRememberedPlayerBrightness(target)
+        }
         return target
     }
 

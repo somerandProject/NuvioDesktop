@@ -135,6 +135,7 @@ internal fun List<WatchProgressEntry>.continueWatchingEntries(
 
 internal fun WatchProgressEntry.shouldTreatAsInProgressForContinueWatching(): Boolean {
     val entry = normalizedCompletion()
+    if (entry.isLiveTvProgressEntry()) return false
     if (entry.isEffectivelyCompleted) return false
 
     val hasStartedPlayback = entry.lastPositionMs > 0L ||
@@ -147,8 +148,13 @@ internal fun WatchProgressEntry.shouldTreatAsInProgressForContinueWatching(): Bo
 
 internal fun WatchProgressEntry.shouldUseAsCompletedSeedForContinueWatching(): Boolean {
     val entry = normalizedCompletion()
+    if (entry.isLiveTvProgressEntry()) return false
     if (isMalformedNextUpSeedContentId(entry.parentMetaId)) return false
-    return entry.isEffectivelyCompleted
+    if (!entry.isEffectivelyCompleted) return false
+    if (entry.source != WatchProgressSourceTraktPlayback) return true
+
+    val explicitPercent = entry.normalizedProgressPercent ?: return false
+    return explicitPercent >= WatchProgressTraktPlaybackNextUpSeedPercentThreshold
 }
 
 internal fun shouldReplaceProgressSnapshotEntry(
@@ -171,11 +177,40 @@ internal fun shouldReplaceProgressSnapshotEntry(
 
 internal fun shouldCascadeCompletedProgressToWatchedHistory(
     entry: WatchProgressEntry,
-    providerOwnsCompletedHistory: Boolean,
-): Boolean = !providerOwnsCompletedHistory && entry.normalizedCompletion().isCompleted
+    isUsingTraktProgress: Boolean,
+): Boolean = !isUsingTraktProgress && entry.normalizedCompletion().isCompleted
 
 internal fun String?.isSeriesTypeForContinueWatching(): Boolean =
     equals("series", ignoreCase = true) || equals("tv", ignoreCase = true)
+
+internal fun WatchProgressEntry.isLiveTvProgressEntry(): Boolean =
+    contentType.isLikelyLiveTvProgressValue() ||
+        parentMetaType.isLikelyLiveTvProgressValue() ||
+        parentMetaId.isLikelyLiveTvProgressUrl() ||
+        videoId.isLikelyLiveTvProgressUrl()
+
+private fun String.isLikelyLiveTvProgressValue(): Boolean =
+    trim().lowercase() in setOf(
+        "live-tv",
+        "livetv",
+        "live_tv",
+        "channel",
+        "tv-channel",
+        "tv_channel",
+        "iptv",
+        "m3u",
+        "stalker",
+    )
+
+private fun String.isLikelyLiveTvProgressUrl(): Boolean {
+    val value = trim().lowercase()
+    return value.startsWith("http://") ||
+        value.startsWith("https://") ||
+        value.startsWith("rtmp://") ||
+        value.startsWith("rtsp://") ||
+        value.endsWith(".m3u") ||
+        value.endsWith(".m3u8")
+}
 
 internal fun isMalformedNextUpSeedContentId(contentId: String?): Boolean {
     val trimmed = contentId?.trim().orEmpty()

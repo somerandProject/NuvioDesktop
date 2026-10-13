@@ -122,3 +122,31 @@ internal fun PlayerStreamList(
         }
     }
 }
+
+private fun List<StreamItem>.stablePlayerKeys(): List<String> {
+    val seen = mutableMapOf<String, Int>()
+    return mapIndexed { index, stream ->
+        val base = listOfNotNull(
+            stream.addonId,
+            stream.url,
+            stream.infoHash,
+            stream.fileIdx?.toString(),
+            stream.name,
+            stream.title,
+        ).joinToString(separator = ":").ifBlank { "stream-$index" }
+        val count = seen[base] ?: 0
+        seen[base] = count + 1
+        if (count == 0) base else "$base#$count"
+    }
+}
+
+private fun StreamItem.isCurrentPlayerStream(
+    currentStreamUrl: String?,
+    currentStreamName: String?,
+): Boolean {
+    val normalizedCurrentUrl = currentStreamUrl?.trim()?.takeIf { it.isNotEmpty() }
+    if (normalizedCurrentUrl != null && normalizedCurrentUrl == url?.trim()) return true
+    val normalizedCurrentName = currentStreamName?.trim()?.takeIf { it.isNotEmpty() }
+    return normalizedCurrentName != null &&
+        (normalizedCurrentName == name?.trim() || normalizedCurrentName == title?.trim())
+}

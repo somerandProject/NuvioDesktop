@@ -1,5 +1,6 @@
 package com.nuvio.app.core.ui
 
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
@@ -10,7 +11,6 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -19,7 +19,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
-import com.nuvio.app.isDesktop
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.jetbrains_sans_bold
 import nuvio.composeapp.generated.resources.jetbrains_sans_regular
@@ -27,16 +26,6 @@ import nuvio.composeapp.generated.resources.jetbrains_sans_semibold
 import org.jetbrains.compose.resources.Font
 
 val LocalAppTheme = staticCompositionLocalOf { AppTheme.WHITE }
-val LocalThemePalette = staticCompositionLocalOf { ThemeColors.White }
-
-val MaterialTheme.themePalette: ThemeColorPalette
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalThemePalette.current
-
-internal val LocalNuvioPlatformDensity = staticCompositionLocalOf<Density> {
-    error("Platform density is unavailable outside NuvioTheme")
-}
 
 val MaterialTheme.appTheme: AppTheme
     @Composable
@@ -197,60 +186,38 @@ private val NuvioRippleConfiguration = RippleConfiguration(
     color = Color.Black,
 )
 
-private const val NuvioDesktopFontScale = 1.08f
-private const val NuvioDesktopBaseWidthDp = 1280f
-private const val NuvioDesktopBaseHeightDp = 820f
-private const val NuvioDesktopMinUiScale = 1f
-private const val NuvioDesktopMaxUiScale = 1.18f
-
-internal fun desktopUiScaleForWindow(widthDp: Float, heightDp: Float): Float {
-    if (!isDesktop || widthDp <= 0f || heightDp <= 0f) return NuvioDesktopMinUiScale
-
-    val rawScale = minOf(
-        widthDp / NuvioDesktopBaseWidthDp,
-        heightDp / NuvioDesktopBaseHeightDp,
-    )
-    return rawScale.coerceIn(NuvioDesktopMinUiScale, NuvioDesktopMaxUiScale)
-}
-
 @Composable
 fun NuvioTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     appTheme: AppTheme = AppTheme.WHITE,
+    customFirst: Color = ThemeAccentColor.PINK.color,
+    customSecond: Color = ThemeAccentColor.CYAN.color,
     amoled: Boolean = false,
-    desktopUiScale: Float = NuvioDesktopMinUiScale,
-    customThemeColors: CustomThemeColors = CustomThemeColors.Default,
     content: @Composable () -> Unit,
 ) {
-    val palette = remember(appTheme, customThemeColors) {
-        ThemeColors.getColorPalette(appTheme, customThemeColors)
-    }
+    val basePalette = ThemeColors.getColorPalette(appTheme, customFirst, customSecond)
+    val animatedVisuals = rememberAnimatedThemeVisuals(appTheme, customFirst, customSecond)
+    val palette = basePalette
     val colorScheme = buildColorScheme(palette, amoled = amoled)
     val tokens = defaultNuvioThemeTokens(palette, amoled = amoled, colorScheme = colorScheme)
 
     val density = LocalDensity.current
-    val effectiveDesktopUiScale = if (isDesktop) {
-        desktopUiScale.coerceIn(NuvioDesktopMinUiScale, NuvioDesktopMaxUiScale)
-    } else {
-        NuvioDesktopMinUiScale
-    }
     CompositionLocalProvider(
-        LocalNuvioPlatformDensity provides density,
         LocalDensity provides Density(
-            density = density.density * effectiveDesktopUiScale,
-            fontScale = if (isDesktop) NuvioDesktopFontScale else 1f,
+            density = density.density,
+            fontScale = 1f,
         ),
         LocalNuvioThemeTokens provides tokens,
         LocalNuvioTypeScale provides NuvioTypeTokens,
         LocalRippleConfiguration provides NuvioRippleConfiguration,
+        LocalOverscrollFactory provides null,
         LocalAppTheme provides appTheme,
-        LocalThemePalette provides palette,
+        LocalAnimatedThemeVisuals provides animatedVisuals,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = NuvioTypography,
-        ) {
-            SkeletonAnimationProvider(content = content)
-        }
+            content = content,
+        )
     }
 }

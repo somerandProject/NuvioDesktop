@@ -9,13 +9,19 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -25,7 +31,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,11 +52,11 @@ import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.MetaExternalRating
 import com.nuvio.app.features.details.formatRuntimeForDisplay
 import com.nuvio.app.features.details.formatMetaReleaseLineForDetails
+import com.nuvio.app.features.details.mainSeriesStats
 import com.nuvio.app.features.mdblist.MdbListMetadataService.PROVIDER_AUDIENCE
 import com.nuvio.app.features.mdblist.MdbListMetadataService.PROVIDER_IMDB
 import com.nuvio.app.features.mdblist.MdbListMetadataService.PROVIDER_LETTERBOXD
 import com.nuvio.app.features.mdblist.MdbListMetadataService.PROVIDER_METACRITIC
-import com.nuvio.app.features.mdblist.MdbListMetadataService.PROVIDER_MAL
 import com.nuvio.app.features.mdblist.MdbListMetadataService.PROVIDER_TMDB
 import com.nuvio.app.features.mdblist.MdbListMetadataService.PROVIDER_TOMATOES
 import com.nuvio.app.features.mdblist.MdbListMetadataService.PROVIDER_TRAKT
@@ -70,6 +79,7 @@ import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun DetailMetaInfo(
     meta: MetaDetails,
     modifier: Modifier = Modifier,
@@ -85,18 +95,29 @@ fun DetailMetaInfo(
     ) {
         val releaseLine = formatMetaReleaseLineForDetails(meta)
         val runtimeText = formatRuntimeForDisplay(meta.runtime)
+        val mainSeasonStats = remember(meta.videos) {
+            meta.mainSeriesStats()
+        }
+        val seriesCountText = mainSeasonStats?.let { stats ->
+            if (stats.seasonCount == 1) {
+                stringResource(Res.string.details_series_counts_one_season, stats.episodeCount)
+            } else {
+                stringResource(Res.string.details_series_counts, stats.seasonCount, stats.episodeCount)
+            }
+        }
         val ageBadge = meta.ageRating?.trim()?.takeIf { it.isNotBlank() }
         val validImdbRating = meta.imdbRating
             ?.takeIf { showOverallRatings && !isMdbListActive }
             ?.takeIf { raw -> raw.toDoubleOrNull()?.let { it > 0.0 } == true }
         val hasMetaRow = releaseLine != null ||
             runtimeText != null ||
+            seriesCountText != null ||
             ageBadge != null ||
             validImdbRating != null
         if (hasMetaRow) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 releaseLine?.let { line ->
                     Text(
@@ -112,6 +133,16 @@ fun DetailMetaInfo(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onBackground,
                         fontWeight = FontWeight.Bold,
+                    )
+                }
+                seriesCountText?.let { counts ->
+                    Text(
+                        text = counts,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 ageBadge?.let { badge ->
@@ -166,11 +197,46 @@ fun DetailMetaInfo(
         }
 
         if (!meta.description.isNullOrBlank()) {
-            ExpandableDescription(
-                text = meta.description,
-                collapsedMaxLines = 3,
-                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-            )
+            var expanded by remember { mutableStateOf(false) }
+            var canExpand by remember(meta.description) { mutableStateOf(false) }
+            val overviewScrollState = rememberScrollState()
+            Column(
+                modifier = Modifier.animateContentSize(),
+            ) {
+                Text(
+                    text = meta.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = if (expanded) Int.MAX_VALUE else 3,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 22.sp,
+                    onTextLayout = { result ->
+                        if (!expanded) {
+                            canExpand = result.hasVisualOverflow
+                        }
+                    },
+                    modifier = if (expanded) {
+                        Modifier
+                            .heightIn(max = 220.dp)
+                            .verticalScroll(overviewScrollState)
+                    } else {
+                        Modifier
+                    },
+                )
+                if (canExpand) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (expanded) {
+                            stringResource(Res.string.details_show_less)
+                        } else {
+                            stringResource(Res.string.details_show_more)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clickable { expanded = !expanded },
+                    )
+                }
+            }
         }
     }
 }
@@ -360,6 +426,22 @@ private val ratingVisuals = listOf(
         format = ::formatWhole,
     ),
     RatingVisuals(
+        source = PROVIDER_TOMATOES,
+        displayName = "Rotten Tomatoes",
+        logo = Res.drawable.rating_rotten_tomatoes,
+        logoWidth = 16.dp,
+        valueColor = Color(0xFFFA320A),
+        format = ::formatPercent,
+    ),
+    RatingVisuals(
+        source = PROVIDER_METACRITIC,
+        displayName = "Metacritic",
+        logo = Res.drawable.rating_metacritic,
+        logoWidth = 16.dp,
+        valueColor = Color(0xFFFFCC33),
+        format = ::formatWhole,
+    ),
+    RatingVisuals(
         source = PROVIDER_TRAKT,
         displayName = "Trakt",
         logo = Res.drawable.rating_trakt,
@@ -376,36 +458,12 @@ private val ratingVisuals = listOf(
         format = ::formatOneDecimal,
     ),
     RatingVisuals(
-        source = PROVIDER_MAL,
-        displayName = "MyAnimeList",
-        logo = Res.drawable.rating_mal,
-        logoWidth = 16.dp,
-        valueColor = Color(0xFF2E51A2),
-        format = ::formatOneDecimal,
-    ),
-    RatingVisuals(
-        source = PROVIDER_TOMATOES,
-        displayName = "Rotten Tomatoes",
-        logo = Res.drawable.rating_rotten_tomatoes,
-        logoWidth = 16.dp,
-        valueColor = Color(0xFFFA320A),
-        format = ::formatPercent,
-    ),
-    RatingVisuals(
         source = PROVIDER_AUDIENCE,
         displayName = runBlocking { getString(Res.string.rating_audience_score) },
         logo = Res.drawable.rating_audience_score,
         logoWidth = 16.dp,
         valueColor = Color(0xFFFA320A),
         format = ::formatPercent,
-    ),
-    RatingVisuals(
-        source = PROVIDER_METACRITIC,
-        displayName = "Metacritic",
-        logo = Res.drawable.rating_metacritic,
-        logoWidth = 16.dp,
-        valueColor = Color(0xFFFFCC33),
-        format = ::formatWhole,
     ),
 )
 

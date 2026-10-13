@@ -1,6 +1,7 @@
 package com.nuvio.app.features.player
 
 import androidx.compose.runtime.Composable
+import kotlinx.serialization.Serializable
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.player_ios_hardware_decoder_off
 import nuvio.composeapp.generated.resources.player_ios_preset_compatibility_desc
@@ -12,6 +13,11 @@ import nuvio.composeapp.generated.resources.player_ios_preset_native_edr_label
 import nuvio.composeapp.generated.resources.player_ios_preset_sdr_tone_mapped_desc
 import nuvio.composeapp.generated.resources.player_ios_preset_sdr_tone_mapped_label
 import org.jetbrains.compose.resources.stringResource
+
+@Serializable
+data class PlayerRoute(
+    val launchId: Long,
+)
 
 data class PlayerLaunch(
     val profileId: Int,
@@ -46,6 +52,7 @@ data class PlayerLaunch(
     val initialPositionMs: Long = 0L,
     val initialProgressFraction: Float? = null,
     val contentLanguage: String? = null,
+    val randomEpisodeMode: Boolean = false,
 )
 
 object PlayerLaunchStore {
@@ -169,8 +176,8 @@ enum class IosHardwareDecoderMode(
     val mpvValue: String,
     val label: String,
 ) {
-    Auto("auto", "Auto"),
-    VideoToolbox("videotoolbox", "VideoToolbox"),
+    Auto("auto-copy", "Auto"),
+    VideoToolbox("videotoolbox-copy", "VideoToolbox"),
     Off("no", "Off"),
 }
 
@@ -231,8 +238,8 @@ data class PlayerPlaybackSnapshot(
     val positionMs: Long = 0L,
     val bufferedPositionMs: Long = 0L,
     val playbackSpeed: Float = 1f,
-    val videoWidth: Int = 0,
-    val videoHeight: Int = 0,
+    val videoWidth: Int? = null,
+    val videoHeight: Int? = null,
 )
 
 data class PlayerNowPlayingInfo(

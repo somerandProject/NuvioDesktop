@@ -9,6 +9,7 @@ import io.github.jan.supabase.functions.Functions
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.storage.Storage
 import io.ktor.client.plugins.HttpRequestRetry
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.http.HttpHeaders
 import io.ktor.http.takeFrom
@@ -35,64 +36,71 @@ object SupabaseProvider {
             supabaseKey = configuration.publishableKey,
         ) {
             httpConfig {
-                install(BackendRateLimitPlugin) {
-                    coordinator = rateLimitCoordinator
+                install(HttpTimeout) {
+                    requestTimeoutMillis = 60_000
+                    connectTimeoutMillis = 30_000
+                    socketTimeoutMillis = 60_000
                 }
-                install(HttpRequestRetry) {
-                    retryOnExceptionIf(maxRetries = 1) { request, cause ->
-                        isSafeBackendRetryRequest(
-                            method = request.method.value,
-                            encodedPath = request.url.build().encodedPath,
-                        ) && SupabaseEndpointConfig.shouldRetryWithFallback(
-                            requestUrl = request.url.buildString(),
-                            cause = cause,
-                        )
+                if (SupabaseEndpointConfig.hasFallback) {
+                    install(BackendRateLimitPlugin) {
+                        coordinator = rateLimitCoordinator
                     }
-                    retryIf(maxRetries = 1) { request, response ->
-                        val safeToRetry = isSafeBackendRetryRequest(
-                            method = request.method.value,
-                            encodedPath = request.url.encodedPath,
-                        )
-                        val retryableResponse = isRetryableBackendResponse(response.status.value)
-                        val fallbackEligible = SupabaseEndpointConfig.shouldRetryWithFallback(
-                            requestUrl = request.url.toString(),
-                            statusCode = response.status.value,
-                        )
-                        safeToRetry && (retryableResponse || fallbackEligible)
-                    }
-                    modifyRequest { request ->
-                        val retryResponse = response
-                        val retryCause = cause
-                        val shouldUseFallback = when {
-                            retryResponse != null && shouldApplyBackendCooldown(
-                                retryResponse.status.value,
-                                retryResponse.headers[HttpHeaders.RetryAfter],
-                            ) -> false
-                            retryResponse != null -> SupabaseEndpointConfig.shouldRetryWithFallback(
+                    install(HttpRequestRetry) {
+                        retryOnExceptionIf(maxRetries = 1) { request, cause ->
+                            isSafeBackendRetryRequest(
+                                method = request.method.value,
+                                encodedPath = request.url.build().encodedPath,
+                            ) && SupabaseEndpointConfig.shouldRetryWithFallback(
                                 requestUrl = request.url.buildString(),
-                                statusCode = retryResponse.status.value,
+                                cause = cause,
                             )
-                            retryCause != null -> SupabaseEndpointConfig.shouldRetryWithFallback(
-                                requestUrl = request.url.buildString(),
-                                cause = retryCause,
-                            )
-                            else -> false
                         }
-                        if (shouldUseFallback) {
-                            SupabaseEndpointConfig.fallbackUrlFor(request.url.buildString())?.let { fallbackUrl ->
-                                request.url.takeFrom(fallbackUrl)
+                        retryIf(maxRetries = 1) { request, response ->
+                            val safeToRetry = isSafeBackendRetryRequest(
+                                method = request.method.value,
+                                encodedPath = request.url.encodedPath,
+                            )
+                            val retryableResponse = isRetryableBackendResponse(response.status.value)
+                            val fallbackEligible = SupabaseEndpointConfig.shouldRetryWithFallback(
+                                requestUrl = request.url.toString(),
+                                statusCode = response.status.value,
+                            )
+                            safeToRetry && (retryableResponse || fallbackEligible)
+                        }
+                        modifyRequest { request ->
+                            val retryResponse = response
+                            val retryCause = cause
+                            val shouldUseFallback = when {
+                                retryResponse != null && shouldApplyBackendCooldown(
+                                    retryResponse.status.value,
+                                    retryResponse.headers[HttpHeaders.RetryAfter],
+                                ) -> false
+                                retryResponse != null -> SupabaseEndpointConfig.shouldRetryWithFallback(
+                                    requestUrl = request.url.buildString(),
+                                    statusCode = retryResponse.status.value,
+                                )
+                                retryCause != null -> SupabaseEndpointConfig.shouldRetryWithFallback(
+                                    requestUrl = request.url.buildString(),
+                                    cause = retryCause,
+                                )
+                                else -> false
+                            }
+                            if (shouldUseFallback) {
+                                SupabaseEndpointConfig.fallbackUrlFor(request.url.buildString())?.let { fallbackUrl ->
+                                    request.url.takeFrom(fallbackUrl)
+                                }
                             }
                         }
-                    }
-                    delayMillis(respectRetryAfterHeader = false) { retryCount ->
-                        val retryResponse = response
-                        if (retryResponse != null && isRetryableBackendResponse(retryResponse.status.value)) {
-                            backendRetryDelayMillis(
-                                retryCount = retryCount,
-                                retryAfterHeader = retryResponse.headers[HttpHeaders.RetryAfter],
-                            )
-                        } else {
-                            100L
+                        delayMillis(respectRetryAfterHeader = false) { retryCount ->
+                            val retryResponse = response
+                            if (retryResponse != null && isRetryableBackendResponse(retryResponse.status.value)) {
+                                backendRetryDelayMillis(
+                                    retryCount = retryCount,
+                                    retryAfterHeader = retryResponse.headers[HttpHeaders.RetryAfter],
+                                )
+                            } else {
+                                100L
+                            }
                         }
                     }
                 }

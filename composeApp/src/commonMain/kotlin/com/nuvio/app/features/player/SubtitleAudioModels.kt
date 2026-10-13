@@ -35,16 +35,31 @@ data class AddonSubtitle(
     val isSelected: Boolean = false,
 )
 
-internal enum class SubtitleTab {
+enum class SubtitleTab {
     BuiltIn,
     Addons,
+    Sync,
     Style,
 }
 
-const val SUBTITLE_DELAY_MIN_MS = -60_000
-const val SUBTITLE_DELAY_MAX_MS = 60_000
+enum class AddonSubtitleStartupMode {
+    FAST_STARTUP,
+    PREFERRED_ONLY,
+    ALL_SUBTITLES,
+}
+
+enum class SubtitleFontFamily {
+    System,
+    SansSerif,
+    Serif,
+    Monospace,
+    Rounded,
+    Custom,
+}
+
+const val SUBTITLE_DELAY_MIN_MS = -600_000
+const val SUBTITLE_DELAY_MAX_MS = 600_000
 const val SUBTITLE_DELAY_STEP_MS = 100
-const val SUBTITLE_AUTO_SYNC_REACTION_COMPENSATION_MS = 300L
 
 internal val subtitleFontSizeRangeSp: IntRange
     get() = if (isDesktop || isIos) 6..40 else 12..40
@@ -57,20 +72,28 @@ data class SubtitleStyleState(
     val outlineWidth: Int = 2,
     val bold: Boolean = false,
     val fontSizeSp: Int = 18,
+    val fontFamily: SubtitleFontFamily = SubtitleFontFamily.System,
+    val customFontName: String? = null,
+    val customFontPath: String? = null,
     val bottomOffset: Int = 20,
-    val stripSdh: Boolean = false,
     val useForcedSubtitles: Boolean = false,
     val showOnlyPreferredLanguages: Boolean = false,
+    val stripSdh: Boolean = false,
 ) {
     companion object {
         val DEFAULT = SubtitleStyleState()
     }
 }
 
+data class SubtitleFontImportResult(
+    val displayName: String,
+    val path: String,
+)
+
 data class SubtitleSyncCue(
     val startTimeMs: Long,
-    val endTimeMs: Long = startTimeMs + 5_000L,
     val text: String,
+    val endTimeMs: Long? = null,
 )
 
 data class SubtitleAutoSyncUiState(
@@ -150,6 +173,7 @@ data class SubtitleAudioUiState(
     val subtitleStyle: SubtitleStyleState = SubtitleStyleState.DEFAULT,
     val showAudioModal: Boolean = false,
     val showSubtitleModal: Boolean = false,
+    val activeSubtitleTab: SubtitleTab = SubtitleTab.BuiltIn,
 )
 
 @Composable
