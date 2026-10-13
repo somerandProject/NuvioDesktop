@@ -175,7 +175,14 @@ jobs:
       - name: Fetch macOS runtime
         env:
           MACOS_ARCH: ${{ matrix.arch }}
-        run: git lfs pull --include="composeApp/src/desktopMain/native/macos/runtime/${MACOS_ARCH}/**" --exclude=""
+        run: |
+          # This fork's LFS quota is exhausted, so fall back to the upstream
+          # project's LFS store (same objects, different budget).
+          git lfs pull --include="composeApp/src/desktopMain/native/macos/runtime/${MACOS_ARCH}/**" --exclude="" || {
+            echo "Origin LFS pull failed; retrying from upstream..." >&2
+            git -c lfs.url=https://github.com/NuvioMedia/NuvioDesktop.git/info/lfs \
+              lfs pull --include="composeApp/src/desktopMain/native/macos/runtime/${MACOS_ARCH}/**" --exclude=""
+          }
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -386,7 +393,13 @@ jobs:
       - name: Fetch Windows runtime
         shell: bash
         run: |
-          git lfs pull --include="composeApp/src/desktopMain/native/windows/runtime/**" --exclude=""
+          # This fork's LFS quota is exhausted, so fall back to the upstream
+          # project's LFS store (same objects, different budget).
+          git lfs pull --include="composeApp/src/desktopMain/native/windows/runtime/**" --exclude="" || {
+            echo "Origin LFS pull failed; retrying from upstream..." >&2
+            git -c lfs.url=https://github.com/NuvioMedia/NuvioDesktop.git/info/lfs \
+              lfs pull --include="composeApp/src/desktopMain/native/windows/runtime/**" --exclude=""
+          }
           runtime_path="composeApp/src/desktopMain/native/windows/runtime/libmpv-2.dll"
           if [[ ! -f "${runtime_path}" ]]; then
             echo "The bundled Windows libmpv runtime is missing." >&2
