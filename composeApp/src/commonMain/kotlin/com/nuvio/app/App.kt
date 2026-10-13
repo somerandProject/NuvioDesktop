@@ -376,35 +376,6 @@ data class CatalogRoute(
     val launchId: Long,
 )
 
-private data class CatalogLaunch(
-    val title: String,
-    val subtitle: String,
-    val target: CatalogTarget,
-)
-
-private object CatalogLaunchStore {
-    private var nextLaunchId = 1L
-    private val launches = mutableMapOf<Long, CatalogLaunch>()
-
-    fun put(launch: CatalogLaunch): Long {
-        val launchId = nextLaunchId++
-        launches[launchId] = launch
-        return launchId
-    }
-
-    fun get(launchId: Long): CatalogLaunch? = launches[launchId]
-
-    fun remove(launchId: Long) {
-        launches.remove(launchId)
-    }
-}
-
-private data class PosterActionTarget(
-    val preview: MetaPreview,
-    val libraryItem: LibraryItem? = null,
-    val libraryListKey: String? = null,
-)
-
 enum class AppScreenTab {
     Home,
     Search,
