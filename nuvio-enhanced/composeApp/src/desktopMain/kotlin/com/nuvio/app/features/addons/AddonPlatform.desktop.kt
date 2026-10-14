@@ -82,6 +82,19 @@ actual suspend fun httpGetTextWithHeaders(
         headers = mapOf("Accept" to "application/json") + headers,
     )
 
+actual suspend fun httpGetBytesWithHeaders(
+    url: String,
+    headers: Map<String, String>,
+): ByteArray = withContext(Dispatchers.IO) {
+    val request = buildDesktopRequest("GET", url, headers, "")
+    desktopHttpClient.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) {
+            error(runBlocking { getString(Res.string.network_request_failed_http, response.code) })
+        }
+        response.body?.bytes() ?: ByteArray(0)
+    }
+}
+
 actual suspend fun httpPostJsonWithHeaders(
     url: String,
     body: String,
