@@ -515,20 +515,21 @@ jobs:
           # in-app updater treats every Dev build as newer than the last.
           if gh release view nuvio-dev-latest >/dev/null 2>&1; then
             if [[ "${ANDROID_ONLY}" == "true" ]]; then
-              # Only replace the Android assets; keep the desktop ones.
+              # Only replace the Android assets; keep the desktop ones and do not
+              # touch the title, so the desktop in-app updater is unaffected.
               gh api "repos/${GITHUB_REPOSITORY}/releases/tags/nuvio-dev-latest" \
                 --jq '.assets[] | select(.name | test("android")).id' | while read -r id; do
-                  [ -n "${id}" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" || true
-                done
+                [ -n "${id}" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" || true
+              done
             else
               # Remove every existing asset first: older builds used different
               # filenames, so matching by new names would leave stale ones behind.
               gh api "repos/${GITHUB_REPOSITORY}/releases/tags/nuvio-dev-latest" \
                 --jq '.assets[].id' | while read -r id; do
-                  [ -n "${id}" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" || true
-                done
+                [ -n "${id}" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" || true
+              done
+              gh release edit nuvio-dev-latest --title "NuvioDev ${ROLLING_VERSION}" --notes-file release-notes.md --latest
             fi
-            gh release edit nuvio-dev-latest --title "NuvioDev ${ROLLING_VERSION}" --notes-file release-notes.md --latest
           else
             gh release create nuvio-dev-latest \
               --title "NuvioDev ${ROLLING_VERSION}" \
