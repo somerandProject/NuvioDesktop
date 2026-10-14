@@ -286,7 +286,9 @@ jobs:
     name: Android APKs
     needs: metadata
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # The vendored Enhanced project is a separate Gradle build with a cold
+    # cache and R8 over several ABI splits, so give it plenty of headroom.
+    timeout-minutes: 180
     env:
       VERSION: ${{ needs.metadata.outputs.rolling_version }}
     steps:
