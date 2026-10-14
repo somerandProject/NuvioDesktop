@@ -140,7 +140,8 @@ android {
             // the signatures differ.
             val hasReleaseKeystore = releaseKeystore != null && releaseStorePassword != null &&
                 releaseKeyAlias != null && releaseKeyPassword != null
-            signingConfig = if (hasReleaseKeystore || legacyUpdateCompatSigning) {
+            val hasLegacyKeystore = legacyUpdateCompatSigning && legacyUpdateCompatKeystore.exists()
+            signingConfig = if (hasReleaseKeystore || hasLegacyKeystore) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")
