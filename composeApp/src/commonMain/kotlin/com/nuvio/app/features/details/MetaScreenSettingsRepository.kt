@@ -26,10 +26,15 @@ enum class MetaScreenSectionKey {
     MORE_LIKE_THIS,
     ;
 
-    
+
     val canBeTabbed: Boolean
         get() = this != ACTIONS && this != OVERVIEW
 }
+
+val desktopHeroOwnedMetaSectionKeys: Set<MetaScreenSectionKey> = setOf(
+    MetaScreenSectionKey.ACTIONS,
+    MetaScreenSectionKey.OVERVIEW,
+)
 
 data class MetaScreenSectionItem(
     val key: MetaScreenSectionKey,
@@ -38,18 +43,6 @@ data class MetaScreenSectionItem(
     val enabled: Boolean,
     val order: Int,
     val tabGroup: Int? = null,
-)
-
-data class MetaScreenSettingsUiState(
-    val items: List<MetaScreenSectionItem> = emptyList(),
-    val backgroundMode: MetaScreenBackgroundMode = MetaScreenBackgroundMode.Normal,
-    val cinematicBackground: Boolean = false,
-    val heroTrailerPlayback: Boolean = false,
-    val randomEpisodeButton: Boolean = false,
-    val tabLayout: Boolean = false,
-    val episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal,
-    val blurUnwatchedEpisodes: Boolean = false,
-    val showEpisodeRatings: Boolean = true,
 )
 
 enum class MetaScreenBackgroundMode {
@@ -75,10 +68,25 @@ enum class MetaScreenBackgroundMode {
             DominantColor -> "dominant_color"
         }
 
+        val Default: MetaScreenBackgroundMode = DominantColor
+
         fun fromLegacyCinematic(enabled: Boolean): MetaScreenBackgroundMode =
-            if (enabled) Cinematic else Normal
+            if (enabled) Cinematic else Default
     }
 }
+
+data class MetaScreenSettingsUiState(
+    val items: List<MetaScreenSectionItem> = emptyList(),
+    val backgroundMode: MetaScreenBackgroundMode = MetaScreenBackgroundMode.Default,
+    val cinematicBackground: Boolean = MetaScreenBackgroundMode.Default.usesBackdropBackground,
+    val heroTrailerPlayback: Boolean = false,
+    val tabLayout: Boolean = false,
+    val episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal,
+    val blurUnwatchedEpisodes: Boolean = false,
+    val posterTransitionEnabled: Boolean = false,
+    val showOverallRatings: Boolean = true,
+    val episodeRatingsVisibility: EpisodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL,
+)
 
 enum class MetaEpisodeCardStyle {
     Horizontal,
@@ -125,15 +133,17 @@ private data class StoredMetaScreenSettingsPayload(
     val cinematicBackground: Boolean = false,
     @SerialName("hero_trailer_playback")
     val heroTrailerPlayback: Boolean = false,
-    @SerialName("random_episode_button")
-    val randomEpisodeButton: Boolean = false,
     @SerialName("tvStyleLayout")
     val tabLayout: Boolean = false,
     val episodeCardStyle: String = "horizontal",
     @SerialName("blur_unwatched_episodes")
     val blurUnwatchedEpisodes: Boolean = false,
-    @SerialName("show_episode_ratings")
-    val showEpisodeRatings: Boolean = true,
+    @SerialName("poster_transition_enabled")
+    val posterTransitionEnabled: Boolean = false,
+    @SerialName("show_overall_ratings")
+    val showOverallRatings: Boolean = true,
+    @SerialName("episode_ratings_visibility")
+    val episodeRatingsVisibility: String = EpisodeRatingsVisibility.SHOW_ALL.name,
 )
 
 private data class MetaScreenSectionDefinition(
@@ -160,6 +170,11 @@ object MetaScreenSettingsRepository {
             descriptionRes = Res.string.meta_section_overview_description,
         ),
         MetaScreenSectionDefinition(
+            key = MetaScreenSectionKey.EPISODES,
+            titleRes = Res.string.settings_meta_episodes,
+            descriptionRes = Res.string.meta_section_episodes_description,
+        ),
+        MetaScreenSectionDefinition(
             key = MetaScreenSectionKey.PRODUCTION,
             titleRes = Res.string.meta_section_production_title,
             descriptionRes = Res.string.meta_section_production_description,
@@ -178,11 +193,6 @@ object MetaScreenSettingsRepository {
             key = MetaScreenSectionKey.TRAILERS,
             titleRes = Res.string.settings_meta_trailers,
             descriptionRes = Res.string.meta_section_trailers_description,
-        ),
-        MetaScreenSectionDefinition(
-            key = MetaScreenSectionKey.EPISODES,
-            titleRes = Res.string.settings_meta_episodes,
-            descriptionRes = Res.string.meta_section_episodes_description,
         ),
         MetaScreenSectionDefinition(
             key = MetaScreenSectionKey.DETAILS,
@@ -206,13 +216,14 @@ object MetaScreenSettingsRepository {
 
     private var hasLoaded = false
     private var preferences: MutableMap<MetaScreenSectionKey, StoredMetaScreenSectionPreference> = mutableMapOf()
-    private var backgroundMode: MetaScreenBackgroundMode = MetaScreenBackgroundMode.Normal
+    private var backgroundMode: MetaScreenBackgroundMode = MetaScreenBackgroundMode.Default
     private var heroTrailerPlayback: Boolean = false
-    private var randomEpisodeButton: Boolean = false
     private var tabLayout: Boolean = false
     private var episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal
     private var blurUnwatchedEpisodes: Boolean = false
-    private var showEpisodeRatings: Boolean = true
+    private var showOverallRatings: Boolean = true
+    private var episodeRatingsVisibility: EpisodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
+    private var posterTransitionEnabled: Boolean = false
     private fun localizedString(resource: StringResource): String = runBlocking { getString(resource) }
 
     fun ensureLoaded() {
@@ -228,12 +239,13 @@ object MetaScreenSettingsRepository {
                 backgroundMode = MetaScreenBackgroundMode.parse(parsed.backgroundMode)
                     ?: MetaScreenBackgroundMode.fromLegacyCinematic(parsed.cinematicBackground)
                 heroTrailerPlayback = parsed.heroTrailerPlayback
-                randomEpisodeButton = parsed.randomEpisodeButton
                 tabLayout = parsed.tabLayout
                 episodeCardStyle = MetaEpisodeCardStyle.parse(parsed.episodeCardStyle)
                     ?: MetaEpisodeCardStyle.Horizontal
                 blurUnwatchedEpisodes = parsed.blurUnwatchedEpisodes
-                showEpisodeRatings = parsed.showEpisodeRatings
+                posterTransitionEnabled = parsed.posterTransitionEnabled
+                showOverallRatings = parsed.showOverallRatings
+                episodeRatingsVisibility = EpisodeRatingsVisibility.parse(parsed.episodeRatingsVisibility)
                 preferences = parsed.items.mapNotNull { item ->
                     val key = runCatching { MetaScreenSectionKey.valueOf(item.key) }.getOrNull() ?: return@mapNotNull null
                     key to item
@@ -249,13 +261,14 @@ object MetaScreenSettingsRepository {
     fun onProfileChanged() {
         hasLoaded = false
         preferences.clear()
-        backgroundMode = MetaScreenBackgroundMode.Normal
+        backgroundMode = MetaScreenBackgroundMode.Default
         heroTrailerPlayback = false
-        randomEpisodeButton = false
         tabLayout = false
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
-        showEpisodeRatings = true
+        posterTransitionEnabled = false
+        showOverallRatings = true
+        episodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
         _uiState.value = MetaScreenSettingsUiState()
         ensureLoaded()
     }
@@ -274,13 +287,6 @@ object MetaScreenSettingsRepository {
     fun setHeroTrailerPlayback(enabled: Boolean) {
         ensureLoaded()
         heroTrailerPlayback = enabled
-        publish()
-        persist()
-    }
-
-    fun setRandomEpisodeButton(enabled: Boolean) {
-        ensureLoaded()
-        randomEpisodeButton = enabled
         publish()
         persist()
     }
@@ -306,9 +312,23 @@ object MetaScreenSettingsRepository {
         persist()
     }
 
-    fun setShowEpisodeRatings(enabled: Boolean) {
+    fun setShowOverallRatings(enabled: Boolean) {
         ensureLoaded()
-        showEpisodeRatings = enabled
+        showOverallRatings = enabled
+        publish()
+        persist()
+    }
+
+    fun setEpisodeRatingsVisibility(visibility: EpisodeRatingsVisibility) {
+        ensureLoaded()
+        episodeRatingsVisibility = visibility
+        publish()
+        persist()
+    }
+
+    fun setPosterTransitionEnabled(enabled: Boolean) {
+        ensureLoaded()
+        posterTransitionEnabled = enabled
         publish()
         persist()
     }
@@ -329,13 +349,14 @@ object MetaScreenSettingsRepository {
     fun clearLocalState() {
         hasLoaded = false
         preferences.clear()
-        backgroundMode = MetaScreenBackgroundMode.Normal
+        backgroundMode = MetaScreenBackgroundMode.Default
         heroTrailerPlayback = false
-        randomEpisodeButton = false
         tabLayout = false
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
-        showEpisodeRatings = true
+        posterTransitionEnabled = false
+        showOverallRatings = true
+        episodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
         _uiState.value = MetaScreenSettingsUiState()
     }
 
@@ -343,21 +364,23 @@ object MetaScreenSettingsRepository {
         items: List<MetaScreenSectionItem>,
         cinematicBackground: Boolean,
         heroTrailerPlayback: Boolean = false,
-        randomEpisodeButton: Boolean = false,
         tabLayout: Boolean,
         episodeCardStyle: MetaEpisodeCardStyle = MetaEpisodeCardStyle.Horizontal,
         blurUnwatchedEpisodes: Boolean = false,
-        showEpisodeRatings: Boolean = true,
         backgroundMode: MetaScreenBackgroundMode? = null,
+        posterTransitionEnabled: Boolean = false,
+        showOverallRatings: Boolean = true,
+        episodeRatingsVisibility: EpisodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL,
     ) {
         ensureLoaded()
         this.backgroundMode = backgroundMode ?: MetaScreenBackgroundMode.fromLegacyCinematic(cinematicBackground)
         this.heroTrailerPlayback = heroTrailerPlayback
-        this.randomEpisodeButton = randomEpisodeButton
         this.tabLayout = tabLayout
         this.episodeCardStyle = episodeCardStyle
         this.blurUnwatchedEpisodes = blurUnwatchedEpisodes
-        this.showEpisodeRatings = showEpisodeRatings
+        this.posterTransitionEnabled = posterTransitionEnabled
+        this.showOverallRatings = showOverallRatings
+        this.episodeRatingsVisibility = episodeRatingsVisibility
         preferences = items.associate { item ->
             item.key to StoredMetaScreenSectionPreference(
                 key = item.key.name,
@@ -380,26 +403,29 @@ object MetaScreenSettingsRepository {
     fun resetToDefaults() {
         ensureLoaded()
         preferences.clear()
-        backgroundMode = MetaScreenBackgroundMode.Normal
+        backgroundMode = MetaScreenBackgroundMode.Default
         heroTrailerPlayback = false
-        randomEpisodeButton = false
         tabLayout = false
         episodeCardStyle = MetaEpisodeCardStyle.Horizontal
         blurUnwatchedEpisodes = false
-        showEpisodeRatings = true
+        posterTransitionEnabled = false
+        showOverallRatings = true
+        episodeRatingsVisibility = EpisodeRatingsVisibility.SHOW_ALL
         normalizePreferences()
         publish()
         persist()
     }
 
-    fun moveByIndex(fromIndex: Int, toIndex: Int) {
+    fun moveByKey(fromKey: MetaScreenSectionKey, toKey: MetaScreenSectionKey) {
         ensureLoaded()
+        if (fromKey == toKey) return
         val orderedKeys = definitions
             .sortedBy { definition -> preferences[definition.key]?.order ?: Int.MAX_VALUE }
             .map { it.key }
             .toMutableList()
-        if (fromIndex !in orderedKeys.indices || toIndex !in orderedKeys.indices) return
-        if (fromIndex == toIndex) return
+        val fromIndex = orderedKeys.indexOf(fromKey)
+        val toIndex = orderedKeys.indexOf(toKey)
+        if (fromIndex == -1 || toIndex == -1) return
         orderedKeys.add(toIndex, orderedKeys.removeAt(fromIndex))
         orderedKeys.forEachIndexed { newIndex, sectionKey ->
             val current = preferences[sectionKey] ?: return@forEachIndexed
@@ -453,11 +479,12 @@ object MetaScreenSettingsRepository {
             backgroundMode = backgroundMode,
             cinematicBackground = backgroundMode.usesBackdropBackground,
             heroTrailerPlayback = heroTrailerPlayback,
-            randomEpisodeButton = randomEpisodeButton,
             tabLayout = tabLayout,
             episodeCardStyle = episodeCardStyle,
             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
-            showEpisodeRatings = showEpisodeRatings,
+            posterTransitionEnabled = posterTransitionEnabled,
+            showOverallRatings = showOverallRatings,
+            episodeRatingsVisibility = episodeRatingsVisibility,
         )
     }
 
@@ -469,11 +496,12 @@ object MetaScreenSettingsRepository {
                     backgroundMode = MetaScreenBackgroundMode.persist(backgroundMode),
                     cinematicBackground = backgroundMode.usesBackdropBackground,
                     heroTrailerPlayback = heroTrailerPlayback,
-                    randomEpisodeButton = randomEpisodeButton,
                     tabLayout = tabLayout,
                     episodeCardStyle = MetaEpisodeCardStyle.persist(episodeCardStyle),
                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,
-                    showEpisodeRatings = showEpisodeRatings,
+                    posterTransitionEnabled = posterTransitionEnabled,
+                    showOverallRatings = showOverallRatings,
+                    episodeRatingsVisibility = episodeRatingsVisibility.name,
                 ),
             ),
         )

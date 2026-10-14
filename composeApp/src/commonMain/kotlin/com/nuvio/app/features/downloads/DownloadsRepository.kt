@@ -1,7 +1,6 @@
 package com.nuvio.app.features.downloads
 
-import com.nuvio.app.features.details.MetaDetails
-import com.nuvio.app.features.details.MetaDetailsRepository
+import com.nuvio.app.features.player.addonSubtitleRequests
 import com.nuvio.app.features.streams.StreamItem
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,8 +15,13 @@ import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 
 object DownloadsRepository {
+    private const val MaxDownloadAttempts = 3
+
     private val _uiState = MutableStateFlow(DownloadsUiState())
     val uiState: StateFlow<DownloadsUiState> = _uiState.asStateFlow()
+
+    private val _hasUnseenCompleted = MutableStateFlow(false)
+    val hasUnseenCompleted: StateFlow<Boolean> = _hasUnseenCompleted.asStateFlow()
 
     private val activeHandles = mutableMapOf<String, DownloadsTaskHandle>()
     private var hasLoaded = false
@@ -32,10 +36,15 @@ object DownloadsRepository {
         loadFromDisk()
     }
 
+    fun markCompletedSeen() {
+        _hasUnseenCompleted.value = false
+    }
+
     fun clearLocalState() {
         activeHandles.values.forEach(DownloadsTaskHandle::cancel)
         activeHandles.clear()
         hasLoaded = false
+        _hasUnseenCompleted.value = false
         _uiState.value = DownloadsUiState()
         notifyLiveStatusPlatform()
     }
@@ -115,7 +124,6 @@ object DownloadsRepository {
         episodeNumber: Int?,
         episodeTitle: String?,
         episodeThumbnail: String?,
-        episodeOverview: String? = null,
         stream: StreamItem,
     ): DownloadEnqueueResult {
         ensureLoaded()
@@ -155,13 +163,7 @@ object DownloadsRepository {
             episodeTitle = episodeTitle,
             fallbackTitle = stream.streamLabel,
             sourceUrl = sourceUrl,
-            nowEpochMs = now,
-        )
-        val detailsSnapshot = snapshotCurrentDetails(
-            contentType = contentType,
-            parentMetaId = parentMetaId,
-            parentMetaType = parentMetaType,
-            videoId = videoId,
+            downloadId = downloadId,
         )
 
         val item = DownloadItem(
@@ -178,16 +180,15 @@ object DownloadsRepository {
             episodeNumber = episodeNumber,
             episodeTitle = episodeTitle,
             episodeThumbnail = episodeThumbnail,
-            episodeOverview = episodeOverview,
-            detailsSnapshot = detailsSnapshot,
             streamTitle = stream.streamLabel,
             streamSubtitle = stream.streamSubtitle,
             providerName = stream.addonName,
             providerAddonId = stream.addonId,
-            externalSubtitles = stream.externalSubtitles,
             sourceUrl = sourceUrl,
             sourceHeaders = sanitizeRequestHeaders(stream.behaviorHints.proxyHeaders?.request),
             sourceResponseHeaders = sanitizeResponseHeaders(stream.behaviorHints.proxyHeaders?.response),
+            subtitleRequests = addonSubtitleRequests(contentType, videoId),
+            sourceSubtitles = stream.externalSubtitles,
             localFileUri = null,
             fileName = fileName,
             status = DownloadStatus.Downloading,
@@ -219,7 +220,6 @@ object DownloadsRepository {
         mutateItem(downloadId) { current ->
             current.copy(
                 status = DownloadStatus.Paused,
-                downloadSpeedBytesPerSecond = 0L,
                 updatedAtEpochMs = DownloadsClock.nowEpochMs(),
                 errorMessage = null,
             )
@@ -243,7 +243,6 @@ object DownloadsRepository {
             status = DownloadStatus.Downloading,
             errorMessage = null,
             localFileUri = null,
-            downloadSpeedBytesPerSecond = 0L,
             updatedAtEpochMs = DownloadsClock.nowEpochMs(),
         )
 
@@ -256,6 +255,16 @@ object DownloadsRepository {
         resumeDownload(downloadId)
     }
 
+    internal fun reattachBackgroundDownload(downloadId: String) {
+        if (!hasLoaded) return
+        val item = _uiState.value.items.firstOrNull { it.id == downloadId } ?: return
+        activeHandles.remove(downloadId)?.cancel()
+        val restored = DownloadsPlatformDownloader.restoreItem(item)
+        replaceItem(restored)
+        persist()
+        if (restored.status == DownloadStatus.Downloading) startDownload(restored)
+    }
+
     fun cancelDownload(downloadId: String) {
         ensureLoaded()
         val item = _uiState.value.items.firstOrNull { it.id == downloadId } ?: return
@@ -263,41 +272,13 @@ object DownloadsRepository {
         activeHandles.remove(downloadId)?.cancel()
         DownloadsPlatformDownloader.removeFile(playableLocalFileUri(item) ?: item.localFileUri)
         DownloadsPlatformDownloader.removePartialFile(item.fileName)
-        item.externalSubtitles.forEach { subtitle ->
-            val subtitleUri = subtitle.url.takeIf { it.startsWith("file:", ignoreCase = true) }
-                ?: return@forEach
-            DownloadsPlatformDownloader.removeFile(subtitleUri)
-        }
 
         publish(_uiState.value.items.filterNot { it.id == downloadId })
         persist()
     }
 
-    fun findOfflineMetaDetails(type: String, id: String): MetaDetails? {
-        ensureLoaded()
-        val normalizedType = type.trim().lowercase()
-        val normalizedId = id.trim()
-        if (normalizedId.isBlank()) return null
-
-        return _uiState.value.items
-            .asSequence()
-            .filter { item ->
-                item.parentMetaId.trim() == normalizedId ||
-                    item.videoId.trim() == normalizedId ||
-                    item.detailsSnapshot?.id?.trim() == normalizedId
-            }
-            .sortedByDescending { it.updatedAtEpochMs }
-            .firstNotNullOfOrNull { item ->
-                val offline = item.toOfflineMetaDetails() ?: return@firstNotNullOfOrNull null
-                val typeMatches = normalizedType.isBlank() ||
-                    offline.type.equals(type, ignoreCase = true) ||
-                    item.parentMetaType.equals(type, ignoreCase = true) ||
-                    item.contentType.equals(type, ignoreCase = true)
-                if (typeMatches) offline else null
-            }
-    }
-
     private fun loadFromDisk() {
+        _hasUnseenCompleted.value = false
         hasLoaded = true
         val payload = DownloadsStorage.loadPayload().orEmpty().trim()
         if (payload.isEmpty()) {
@@ -309,15 +290,7 @@ object DownloadsRepository {
         var shouldPersistNormalized = false
         val normalized = DownloadsCodec.decodeItems(payload)
             .map { item ->
-                val statusNormalized = if (item.status == DownloadStatus.Downloading) {
-                    item.copy(
-                        status = DownloadStatus.Paused,
-                        downloadSpeedBytesPerSecond = 0L,
-                        errorMessage = null,
-                    )
-                } else {
-                    item
-                }
+                val statusNormalized = DownloadsPlatformDownloader.restoreItem(item)
 
                 val localUriNormalized = normalizeCompletedLocalFileUri(statusNormalized)
                 if (localUriNormalized != item) {
@@ -331,14 +304,12 @@ object DownloadsRepository {
         if (shouldPersistNormalized) {
             persist()
         }
+        normalized.filter { it.status == DownloadStatus.Downloading && it.id !in activeHandles }
+            .forEach(::startDownload)
     }
 
-    private fun startDownload(item: DownloadItem) {
-        val request = DownloadPlatformRequest(
-            sourceUrl = item.sourceUrl,
-            sourceHeaders = item.sourceHeaders,
-            destinationFileName = item.fileName,
-        )
+    private fun startDownload(item: DownloadItem, attempt: Int = 1) {
+        val request = DownloadPlatformRequest(item)
 
         val handle = DownloadsPlatformDownloader.start(
             request = request,
@@ -347,30 +318,10 @@ object DownloadsRepository {
                     if (current.status != DownloadStatus.Downloading) {
                         current
                     } else {
-                        val now = DownloadsClock.nowEpochMs()
-                        val nextDownloadedBytes = downloadedBytes.coerceAtLeast(0L)
-                        val byteDelta = (nextDownloadedBytes - current.downloadedBytes).coerceAtLeast(0L)
-                        val elapsedMs = (now - current.updatedAtEpochMs).coerceAtLeast(0L)
-                        val instantSpeed = if (byteDelta > 0L && elapsedMs > 0L) {
-                            (byteDelta * 1_000L) / elapsedMs
-                        } else {
-                            null
-                        }
-                        val smoothedSpeed = when {
-                            instantSpeed == null -> current.downloadSpeedBytesPerSecond
-                            current.downloadSpeedBytesPerSecond > 0L ->
-                                (
-                                    current.downloadSpeedBytesPerSecond.toDouble() * 0.65 +
-                                        instantSpeed.toDouble() * 0.35
-                                    ).toLong()
-                            else -> instantSpeed
-                        }.coerceAtLeast(0L)
-
                         current.copy(
-                            downloadedBytes = nextDownloadedBytes,
+                            downloadedBytes = downloadedBytes.coerceAtLeast(0L),
                             totalBytes = totalBytes?.takeIf { it > 0L },
-                            downloadSpeedBytesPerSecond = smoothedSpeed,
-                            updatedAtEpochMs = now,
+                            updatedAtEpochMs = DownloadsClock.nowEpochMs(),
                             errorMessage = null,
                         )
                     }
@@ -379,39 +330,45 @@ object DownloadsRepository {
             onSuccess = { localFileUri, totalBytes ->
                 activeHandles.remove(item.id)
                 mutateItem(item.id) { current ->
-                    val cachedSubtitles = DownloadsPlatformDownloader.cacheSubtitleFiles(
-                        subtitles = current.externalSubtitles,
-                        companionBaseFileName = current.fileName,
-                    )
+                    if (current.status != DownloadStatus.Downloading) return@mutateItem current
                     current.copy(
                         status = DownloadStatus.Completed,
                         localFileUri = localFileUri,
-                        externalSubtitles = cachedSubtitles.ifEmpty { current.externalSubtitles },
                         downloadedBytes = if (totalBytes != null && totalBytes > 0L) {
                             totalBytes
                         } else {
                             current.downloadedBytes
                         },
                         totalBytes = totalBytes?.takeIf { it > 0L } ?: current.totalBytes,
-                        downloadSpeedBytesPerSecond = 0L,
                         errorMessage = null,
                         updatedAtEpochMs = DownloadsClock.nowEpochMs(),
                     )
                 }
             },
-            onFailure = { message ->
+            onFailure = onFailure@ { message ->
                 activeHandles.remove(item.id)
+                val current = _uiState.value.items.firstOrNull { it.id == item.id }
+                if (current?.status == DownloadStatus.Downloading && attempt < MaxDownloadAttempts) {
+                    startDownload(current, attempt + 1)
+                    return@onFailure
+                }
                 mutateItem(item.id) { current ->
                     if (current.status != DownloadStatus.Downloading) {
                         current
                     } else {
                         current.copy(
                             status = DownloadStatus.Failed,
-                            downloadSpeedBytesPerSecond = 0L,
                             errorMessage = message.ifBlank { runBlocking { getString(Res.string.download_failed) } },
                             updatedAtEpochMs = DownloadsClock.nowEpochMs(),
                         )
                     }
+                }
+            },
+            onPaused = {
+                activeHandles.remove(item.id)
+                mutateItem(item.id) { current ->
+                    if (current.status != DownloadStatus.Downloading) return@mutateItem current
+                    current.copy(status = DownloadStatus.Paused, errorMessage = null)
                 }
             },
         )
@@ -444,6 +401,10 @@ object DownloadsRepository {
     }
 
     private fun publish(items: List<DownloadItem>) {
+        val previousStatuses = _uiState.value.items.associate { it.id to it.status }
+        if (items.any { it.status == DownloadStatus.Completed && previousStatuses[it.id].let { status -> status != null && status != DownloadStatus.Completed } }) {
+            _hasUnseenCompleted.value = true
+        }
         _uiState.value = DownloadsUiState(
             items = items,
         )
@@ -454,34 +415,6 @@ object DownloadsRepository {
         runCatching {
             DownloadsLiveStatusPlatform.onItemsChanged(_uiState.value.items)
         }
-    }
-
-    private fun snapshotCurrentDetails(
-        contentType: String,
-        parentMetaId: String,
-        parentMetaType: String,
-        videoId: String,
-    ): DownloadDetailsSnapshot? {
-        val candidates = listOf(
-            parentMetaType to parentMetaId,
-            contentType to parentMetaId,
-            parentMetaType to videoId,
-            contentType to videoId,
-        )
-
-        return candidates
-            .asSequence()
-            .mapNotNull { (type, id) ->
-                val normalizedType = type.trim()
-                val normalizedId = id.trim()
-                if (normalizedType.isBlank() || normalizedId.isBlank()) {
-                    null
-                } else {
-                    MetaDetailsRepository.peek(normalizedType, normalizedId)
-                }
-            }
-            .firstOrNull()
-            ?.toDownloadDetailsSnapshot()
     }
 
     private fun persist() {
@@ -594,7 +527,7 @@ private fun buildFileName(
     episodeTitle: String?,
     fallbackTitle: String,
     sourceUrl: String,
-    nowEpochMs: Long,
+    downloadId: String,
 ): String {
     val baseTitle = if (seasonNumber != null && episodeNumber != null) {
         buildString {
@@ -616,7 +549,7 @@ private fun buildFileName(
     return buildString {
         append(baseTitle.sanitizeFileName().ifBlank { "download" }.take(92))
         append('_')
-        append(nowEpochMs.toString(36))
+        append(downloadId)
         append('.')
         append(extension)
     }
