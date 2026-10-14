@@ -1,4 +1,4 @@
-﻿name: Build Desktop Release
+name: Build Desktop Release
 
 on:
   workflow_dispatch:
@@ -175,16 +175,7 @@ jobs:
       - name: Fetch macOS runtime
         env:
           MACOS_ARCH: ${{ matrix.arch }}
-        run: |
-          # This fork's LFS quota is exhausted, so materialise the runtime from
-          # the upstream project's LFS store (same OID, different budget).
-          # Note: "git lfs pull" ignores "-c lfs.url", so use an explicit remote.
-          git lfs pull --include="composeApp/src/desktopMain/native/macos/runtime/${MACOS_ARCH}/**" --exclude="" || {
-            echo "Origin LFS pull failed; fetching the same objects from upstream..." >&2
-            git remote add lfs-upstream https://github.com/NuvioMedia/NuvioDesktop.git 2>/dev/null || true
-            git lfs fetch lfs-upstream --include="composeApp/src/desktopMain/native/macos/runtime/${MACOS_ARCH}/**"
-            git lfs checkout
-          }
+        run: git lfs pull --include="composeApp/src/desktopMain/native/macos/runtime/${MACOS_ARCH}/**" --exclude=""
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -395,15 +386,7 @@ jobs:
       - name: Fetch Windows runtime
         shell: bash
         run: |
-          # This fork's LFS quota is exhausted, so materialise the runtime from
-          # the upstream project's LFS store (same OID, different budget).
-          # Note: "git lfs pull" ignores "-c lfs.url", so use an explicit remote.
-          git lfs pull --include="composeApp/src/desktopMain/native/windows/runtime/**" --exclude="" || {
-            echo "Origin LFS pull failed; fetching the same objects from upstream..." >&2
-            git remote add lfs-upstream https://github.com/NuvioMedia/NuvioDesktop.git 2>/dev/null || true
-            git lfs fetch lfs-upstream --include="composeApp/src/desktopMain/native/windows/runtime/**"
-            git lfs checkout
-          }
+          git lfs pull --include="composeApp/src/desktopMain/native/windows/runtime/**" --exclude=""
           runtime_path="composeApp/src/desktopMain/native/windows/runtime/libmpv-2.dll"
           if [[ ! -f "${runtime_path}" ]]; then
             echo "The bundled Windows libmpv runtime is missing." >&2

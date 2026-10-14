@@ -518,15 +518,13 @@ internal fun pluginBase64Encode(data: String): String =
 @OptIn(ExperimentalEncodingApi::class)
 internal fun pluginBase64Decode(data: String): String {
     var normalized = data.trim().replace("\n", "").replace("\r", "").replace(" ", "")
-    if (normalized.isEmpty() || normalized.length % 4 == 1) return ""
     normalized = normalized.replace("-", "+").replace("_", "/")
     val padNeeded = (4 - (normalized.length % 4)) % 4
     if (padNeeded > 0) {
         normalized += "=".repeat(padNeeded)
     }
-    return runCatching {
-        Base64.decode(normalized).decodeToString()
-    }.getOrDefault("")
+    val decoded = Base64.decode(normalized)
+    return decoded.decodeToString()
 }
 
 internal fun pluginUtf8ToHex(value: String): String =

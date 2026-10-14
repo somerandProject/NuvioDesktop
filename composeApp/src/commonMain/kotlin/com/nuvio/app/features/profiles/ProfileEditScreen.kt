@@ -2,44 +2,27 @@ package com.nuvio.app.features.profiles
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,9 +38,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.core.ui.NuvioAsyncImage as AsyncImage
 import com.nuvio.app.core.auth.AuthRepository
 import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.ui.NuvioInputField
@@ -66,12 +49,14 @@ import com.nuvio.app.core.ui.NuvioScreen
 import com.nuvio.app.core.ui.NuvioScreenHeader
 import com.nuvio.app.core.ui.NuvioStatusModal
 import com.nuvio.app.core.ui.NuvioSurfaceCard
-import com.nuvio.app.features.home.components.CollectionCardRemoteImage
+import com.nuvio.app.core.ui.themePalette
+import com.nuvio.app.features.membership.CosmeticEntitlement
+import com.nuvio.app.features.membership.MemberAccessRepository
+import com.nuvio.app.features.membership.ProfileBackgroundRepository
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProfileEditScreen(
     profile: NuvioProfile? = null,
@@ -92,40 +77,35 @@ fun ProfileEditScreen(
     var name by rememberSaveable { mutableStateOf(currentProfile?.name ?: "") }
     var selectedAvatarId by rememberSaveable { mutableStateOf(currentProfile?.avatarId) }
     var avatarUrl by rememberSaveable { mutableStateOf(currentProfile?.avatarUrl.orEmpty()) }
-    var backgroundUrl by rememberSaveable { mutableStateOf(currentProfile?.backgroundUrl.orEmpty()) }
+    var selectedBackgroundId by rememberSaveable { mutableStateOf(currentProfile?.profileBackgroundId) }
+    var selectedBackgroundUrl by rememberSaveable { mutableStateOf(currentProfile?.profileBackgroundUrl) }
     var usesPrimaryAddons by rememberSaveable { mutableStateOf(currentProfile?.usesPrimaryAddons ?: false) }
     var isSaving by remember { mutableStateOf(false) }
-    var saveErrorMessage by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showPinSetup by remember { mutableStateOf(false) }
     var showPinClear by remember { mutableStateOf(false) }
-    var showGifSearch by remember { mutableStateOf(false) }
-    val authState by AuthRepository.state.collectAsStateWithLifecycle()
+    val memberAccess by remember {
+        MemberAccessRepository.ensureStarted()
+        MemberAccessRepository.access
+    }.collectAsStateWithLifecycle()
+    val backgroundCatalog by ProfileBackgroundRepository.catalog.collectAsStateWithLifecycle()
+    val canChooseBackground = !isNew && memberAccess.entitlements.includes(CosmeticEntitlement.PROFILE_BACKGROUNDS)
 
     val avatars by AvatarRepository.avatars.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) {
-        AvatarRepository.fetchAvatars()
         AvatarRepository.refreshAvatars()
     }
-    LaunchedEffect(isNew, avatars, selectedAvatarId, avatarUrl, currentProfile?.avatarId, currentProfile?.avatarUrl) {
-        if (
-            avatarUrl.isBlank() &&
-            selectedAvatarId == null &&
-            avatars.isNotEmpty() &&
-            (isNew || !currentProfile?.avatarUrl.isNullOrBlank())
-        ) {
-            selectedAvatarId = currentProfile
-                ?.avatarId
-                ?.takeIf { avatarId -> avatars.any { it.id == avatarId } }
-                ?: avatars.first().id
+    LaunchedEffect(canChooseBackground) {
+        if (canChooseBackground) ProfileBackgroundRepository.preloadLandscapeImages()
+    }
+    LaunchedEffect(isNew, avatars, selectedAvatarId, avatarUrl) {
+        if (isNew && avatarUrl.isBlank() && selectedAvatarId == null && avatars.isNotEmpty()) {
+            selectedAvatarId = avatars.first().id
         }
     }
 
     val customAvatarUrl = remember(avatarUrl) { normalizedAvatarUrl(avatarUrl) }
     val avatarUrlIsInvalid = avatarUrl.isNotBlank() && customAvatarUrl == null
-    val customBackgroundUrl = remember(backgroundUrl) { normalizedProfileBackgroundUrl(backgroundUrl) }
-    val backgroundUrlIsInvalid = backgroundUrl.isNotBlank() && customBackgroundUrl == null
-    val genericSaveErrorMessage = stringResource(Res.string.profile_save_failed)
     val selectedAvatarItem = remember(selectedAvatarId, avatars) {
         selectedAvatarId?.let { id -> avatars.find { it.id == id } }
     }
@@ -180,36 +160,10 @@ fun ProfileEditScreen(
                             avatarUrl = value
                             if (value.isNotBlank()) {
                                 selectedAvatarId = null
-                            } else if (selectedAvatarId == null && avatars.isNotEmpty()) {
-                                selectedAvatarId = currentProfile
-                                    ?.avatarId
-                                    ?.takeIf { avatarId -> avatars.any { it.id == avatarId } }
-                                    ?: avatars.first().id
                             }
                         },
                         placeholder = stringResource(Res.string.profile_custom_avatar_url_placeholder),
                     )
-                    Button(
-                        onClick = { showGifSearch = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                            contentColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Search,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(Res.string.profile_gif_search_button),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
                     if (avatarUrlIsInvalid) {
                         Text(
                             text = stringResource(Res.string.profile_avatar_url_invalid),
@@ -221,29 +175,30 @@ fun ProfileEditScreen(
             }
         }
 
-        item {
-            NuvioSurfaceCard {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = stringResource(Res.string.profile_custom_background_url),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = stringResource(Res.string.profile_custom_background_url_description),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    NuvioInputField(
-                        value = backgroundUrl,
-                        onValueChange = { backgroundUrl = it },
-                        placeholder = stringResource(Res.string.profile_custom_background_url_placeholder),
-                    )
-                    if (backgroundUrlIsInvalid) {
+        if (canChooseBackground) {
+            item {
+                NuvioSurfaceCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Text(
-                            text = stringResource(Res.string.profile_background_url_invalid),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
+                            text = stringResource(Res.string.profile_choose_background),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(Res.string.profile_background_member_note),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        ProfileBackgroundPicker(
+                            backgrounds = backgroundCatalog,
+                            selectedBackgroundId = selectedBackgroundId,
+                            selectedBackgroundUrl = selectedBackgroundUrl,
+                            customBackgroundUrl = currentProfile?.profileBackgroundUrl,
+                            standardBackgroundColor = previewAccent,
+                            onSelectionChange = { id, url ->
+                                selectedBackgroundId = id
+                                selectedBackgroundUrl = url
+                            },
                         )
                     }
                 }
@@ -269,33 +224,14 @@ fun ProfileEditScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
-                    if (avatars.isNotEmpty()) {
-                        val avatarSpacing = 10.dp
-                        val minAvatarSize = 58.dp
-                        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                            val columns = (((maxWidth + avatarSpacing) / (minAvatarSize + avatarSpacing)).toInt())
-                                .coerceAtLeast(1)
-                            val avatarSize = (maxWidth - avatarSpacing * (columns - 1)) / columns
-
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(avatarSpacing),
-                                verticalArrangement = Arrangement.spacedBy(avatarSpacing),
-                                maxItemsInEachRow = columns,
-                            ) {
-                                avatars.forEach { avatar ->
-                                    AvatarChoiceItem(
-                                        avatar = avatar,
-                                        size = avatarSize,
-                                        isSelected = customAvatarUrl == null && avatar.id == selectedAvatarId,
-                                        onClick = {
-                                            avatarUrl = ""
-                                            selectedAvatarId = avatar.id
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    AvatarPicker(
+                        avatars = avatars,
+                        selectedAvatarId = selectedAvatarId.takeIf { customAvatarUrl == null },
+                        onAvatarSelected = { avatar ->
+                            avatarUrl = ""
+                            selectedAvatarId = avatar.id
+                        },
+                    )
                 }
             }
         }
@@ -336,15 +272,6 @@ fun ProfileEditScreen(
 
         item {
             Spacer(modifier = Modifier.height(8.dp))
-            saveErrorMessage?.let { message ->
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-            }
             NuvioPrimaryButton(
                 text = if (isSaving) {
                     stringResource(Res.string.profile_saving)
@@ -353,19 +280,17 @@ fun ProfileEditScreen(
                 } else {
                     stringResource(Res.string.collections_editor_save_changes)
                 },
-                enabled = name.isNotBlank() && !avatarUrlIsInvalid && !backgroundUrlIsInvalid && !isSaving,
+                enabled = name.isNotBlank() && !avatarUrlIsInvalid && !isSaving,
                 onClick = {
-                    saveErrorMessage = null
                     isSaving = true
                     scope.launch {
                         val avatarColorHex = visibleAvatarItem?.bgColor ?: fallbackColorHex
-                        val result = if (isNew) {
+                        if (isNew) {
                             ProfileRepository.createProfile(
                                 name = name,
                                 avatarColorHex = avatarColorHex,
                                 avatarId = if (customAvatarUrl == null) selectedAvatarId else null,
                                 avatarUrl = customAvatarUrl,
-                                backgroundUrl = customBackgroundUrl,
                                 usesPrimaryAddons = usesPrimaryAddons,
                             )
                         } else {
@@ -375,17 +300,13 @@ fun ProfileEditScreen(
                                 avatarColorHex = avatarColorHex,
                                 avatarId = if (customAvatarUrl == null) selectedAvatarId else null,
                                 avatarUrl = customAvatarUrl,
-                                backgroundUrl = customBackgroundUrl,
+                                profileBackgroundId = selectedBackgroundId,
+                                profileBackgroundUrl = selectedBackgroundUrl,
                                 usesPrimaryAddons = usesPrimaryAddons,
                             )
                         }
                         isSaving = false
-                        if (result.success) {
-                            onSaved()
-                        } else {
-                            saveErrorMessage = result.message
-                                ?: genericSaveErrorMessage
-                        }
+                        onSaved()
                     }
                 },
             )
@@ -422,6 +343,7 @@ fun ProfileEditScreen(
             currentProfile?.name.orEmpty(),
         ),
         isVisible = showDeleteConfirm,
+        destructive = true,
         confirmText = stringResource(Res.string.action_delete),
         dismissText = stringResource(Res.string.action_cancel),
         onConfirm = {
@@ -440,11 +362,6 @@ fun ProfileEditScreen(
             hasExistingPin = currentProfile.pinEnabled,
             onDone = {
                 showPinSetup = false
-                scope.launch {
-                    if (authState is AuthState.Authenticated) {
-                        ProfileRepository.pullProfiles()
-                    }
-                }
             },
             onDismiss = { showPinSetup = false },
         )
@@ -460,269 +377,6 @@ fun ProfileEditScreen(
             onDismiss = {
                 showPinClear = false
             },
-        )
-    }
-
-    if (showGifSearch) {
-        ProfileGifSearchDialog(
-            onSelect = { item ->
-                avatarUrl = item.gifUrl
-                selectedAvatarId = null
-                showGifSearch = false
-            },
-            onDismiss = { showGifSearch = false },
-        )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
-@Composable
-private fun ProfileGifSearchDialog(
-    onSelect: (ProfileGifSearchItem) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    var query by rememberSaveable { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<ProfileGifSearchItem>>(emptyList()) }
-    var isSearching by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    val searchFailedMessage = stringResource(Res.string.profile_gif_search_error)
-    val notConfiguredMessage = stringResource(Res.string.profile_gif_search_not_configured)
-
-    fun runSearch() {
-        val cleanQuery = query.trim()
-        if (cleanQuery.isBlank() || isSearching) return
-        isSearching = true
-        errorMessage = null
-        scope.launch {
-            val result = ProfileGifSearchService.search(cleanQuery)
-            isSearching = false
-            result.fold(
-                onSuccess = {
-                    results = it
-                    errorMessage = null
-                },
-                onFailure = { throwable ->
-                    results = emptyList()
-                    errorMessage = if (throwable is ProfileGifSearchNotConfiguredException) {
-                        notConfiguredMessage
-                    } else {
-                        searchFailedMessage
-                    }
-                },
-            )
-        }
-    }
-
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp,
-            shadowElevation = 18.dp,
-        ) {
-            Column(
-                modifier = Modifier
-                    .heightIn(max = 680.dp)
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            text = stringResource(Res.string.profile_gif_search_title),
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            text = stringResource(Res.string.profile_gif_search_description),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = stringResource(Res.string.action_cancel),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    NuvioInputField(
-                        value = query,
-                        onValueChange = { query = it },
-                        placeholder = stringResource(Res.string.profile_gif_search_placeholder),
-                    )
-                    Button(
-                        onClick = ::runSearch,
-                        enabled = query.isNotBlank() && !isSearching,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(16.dp),
-                    ) {
-                        if (isSearching) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary,
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Rounded.Search,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (isSearching) {
-                                stringResource(Res.string.profile_gif_search_loading)
-                            } else {
-                                stringResource(Res.string.profile_gif_search_submit)
-                            },
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-
-                errorMessage?.let { message ->
-                    Text(
-                        text = message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    when {
-                        !isSearching && results.isEmpty() && errorMessage == null -> {
-                            ProfileGifSearchEmptyState(
-                                text = if (query.isBlank()) {
-                                    stringResource(Res.string.profile_gif_search_empty)
-                                } else {
-                                    stringResource(Res.string.profile_gif_search_no_results)
-                                },
-                            )
-                        }
-
-                        results.isNotEmpty() -> {
-                            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                                val spacing = 10.dp
-                                val itemWidth = (maxWidth - spacing) / 2
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(spacing),
-                                    verticalArrangement = Arrangement.spacedBy(spacing),
-                                    maxItemsInEachRow = 2,
-                                ) {
-                                    results.forEach { item ->
-                                        ProfileGifResultCard(
-                                            item = item,
-                                            modifier = Modifier.width(itemWidth),
-                                            onClick = { onSelect(item) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(Res.string.profile_gif_search_powered_by),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    TextButton(onClick = onDismiss) {
-                        Text(text = stringResource(Res.string.action_cancel))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProfileGifResultCard(
-    item: ProfileGifSearchItem,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = modifier
-            .height(150.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            CollectionCardRemoteImage(
-                imageUrl = item.previewUrl,
-                contentDescription = item.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                animateIfPossible = false,
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.46f))
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProfileGifSearchEmptyState(text: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(150.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 18.dp),
         )
     }
 }
@@ -770,20 +424,18 @@ private fun ProfileIdentityCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     if (customAvatarUrl != null) {
-                        CollectionCardRemoteImage(
-                            imageUrl = customAvatarUrl,
+                        AsyncImage(
+                            model = customAvatarUrl,
                             contentDescription = name,
                             modifier = Modifier.size(88.dp).clip(CircleShape),
                             contentScale = ContentScale.Crop,
-                            animateIfPossible = true,
                         )
                     } else if (selectedAvatar != null) {
-                        CollectionCardRemoteImage(
-                            imageUrl = avatarStorageUrl(selectedAvatar.storagePath),
+                        AsyncImage(
+                            model = avatarImageUrl(selectedAvatar),
                             contentDescription = selectedAvatar.displayName,
                             modifier = Modifier.size(88.dp).clip(CircleShape),
                             contentScale = ContentScale.Crop,
-                            animateIfPossible = true,
                         )
                     } else if (name.isNotBlank()) {
                         Text(
@@ -864,56 +516,6 @@ private fun ProfileIdentityCard(
     }
 }
 
-@Composable
-private fun AvatarChoiceItem(
-    avatar: AvatarCatalogItem,
-    size: androidx.compose.ui.unit.Dp,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(
-                avatar.bgColor?.let(::parseHexColor)
-                    ?: MaterialTheme.colorScheme.surfaceVariant,
-            )
-            .border(
-                width = if (isSelected) 3.dp else 1.dp,
-                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                shape = CircleShape,
-            )
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        CollectionCardRemoteImage(
-            imageUrl = avatarStorageUrl(avatar.storagePath),
-            contentDescription = avatar.displayName,
-            modifier = Modifier.fillMaxSize().clip(CircleShape),
-            contentScale = ContentScale.Crop,
-            animateIfPossible = true,
-        )
-
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .size(20.dp)
-                    .align(Alignment.BottomEnd)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Check,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(12.dp),
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun ProfileOptionRow(

@@ -52,7 +52,7 @@ internal fun LibrarySavedControls(
         modifier = modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (layoutMode == LibraryLayoutMode.VERTICAL && sourceMode == LibrarySourceMode.TRAKT) {
+        if (layoutMode == LibraryLayoutMode.VERTICAL && sourceMode.isRemoteTrackingSource) {
             val selectedSection = verticalProjection.availableSections
                 .firstOrNull { section -> section.type == verticalProjection.selectedSectionKey }
             NuvioDropdownChip(

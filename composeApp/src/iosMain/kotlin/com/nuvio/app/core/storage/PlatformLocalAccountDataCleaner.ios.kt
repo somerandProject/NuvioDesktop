@@ -2,7 +2,6 @@
 
 package com.nuvio.app.core.storage
 
-import com.nuvio.app.features.profiles.MAX_PROFILE_SLOTS
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSHomeDirectory
@@ -77,7 +76,7 @@ internal actual object PlatformLocalAccountDataCleaner {
 
         plainKeys.forEach(defaults::removeObjectForKey)
 
-        (1..MAX_PROFILE_SLOTS).forEach { profileId ->
+        (1..MAX_PROFILES).forEach { profileId ->
             profileIndexedPrefixes.forEach { prefix ->
                 defaults.removeObjectForKey("$prefix$profileId")
             }

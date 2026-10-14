@@ -12,7 +12,6 @@ import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
 import io.ktor.client.statement.bodyAsText
-import io.ktor.client.call.body
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -136,23 +135,6 @@ actual suspend fun httpGetTextWithHeaders(
                 throw IllegalStateException(runBlocking { getString(Res.string.network_empty_response_body) })
             }
             payload
-        }
-
-actual suspend fun httpGetBytesWithHeaders(
-    url: String,
-    headers: Map<String, String>,
-): ByteArray =
-    addonHttpClient
-        .get(url) {
-            headers.forEach { (key, value) ->
-                header(key, value)
-            }
-        }
-        .let { response ->
-            if (!response.status.isSuccess()) {
-                error(runBlocking { getString(Res.string.network_request_failed_http, response.status.value) })
-            }
-            response.body()
         }
 
 actual suspend fun httpPostJsonWithHeaders(

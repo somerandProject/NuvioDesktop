@@ -6,6 +6,10 @@ import com.nuvio.app.features.addons.httpGetTextWithHeaders
 import kotlinx.coroutines.launch
 
 internal fun PlayerScreenRuntime.fetchAddonSubtitlesForActiveItem() {
+    if (activeSourceUrl.startsWith("file:") && externalSubtitles.isNotEmpty()) {
+        SubtitleRepository.clear()
+        return
+    }
     val type = activeAddonSubtitleType.takeIf { it.isNotBlank() } ?: return
     val videoId = activeVideoId?.takeIf { it.isNotBlank() } ?: return
     SubtitleRepository.fetchAddonSubtitles(type, videoId)
@@ -49,8 +53,6 @@ internal fun PlayerScreenRuntime.loadSubtitleAutoSyncCues(force: Boolean = false
 }
 
 internal fun PlayerScreenRuntime.captureSubtitleAutoSyncTime() {
-    playerController?.pause()
-    shouldPlay = false
     subtitleAutoSyncState = subtitleAutoSyncState.copy(
         capturedPositionMs = playbackSnapshot.positionMs.coerceAtLeast(0L),
         errorMessage = null,
@@ -59,14 +61,9 @@ internal fun PlayerScreenRuntime.captureSubtitleAutoSyncTime() {
 }
 
 internal fun PlayerScreenRuntime.applySubtitleAutoSyncCue(cue: SubtitleSyncCue) {
-    val currentPositionMs = playbackSnapshot.positionMs.coerceAtLeast(0L)
-    val newDelayMs = (currentPositionMs - cue.startTimeMs)
+    val capturedPositionMs = subtitleAutoSyncState.capturedPositionMs ?: return
+    val newDelayMs = (capturedPositionMs - cue.startTimeMs - SUBTITLE_AUTO_SYNC_REACTION_COMPENSATION_MS)
         .toInt()
         .coerceIn(SUBTITLE_DELAY_MIN_MS, SUBTITLE_DELAY_MAX_MS)
     setSubtitleDelay(newDelayMs)
-    showSubtitleModal = false
-    subtitleAutoSyncState = subtitleAutoSyncState.copy(
-        capturedPositionMs = currentPositionMs,
-        errorMessage = null,
-    )
 }

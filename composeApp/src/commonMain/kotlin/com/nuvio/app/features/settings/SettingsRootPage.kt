@@ -1,12 +1,9 @@
 package com.nuvio.app.features.settings
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.rounded.AccountCircle
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Extension
@@ -17,19 +14,10 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Policy
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nuvio.app.core.build.AppVersionConfig
 import nuvio.composeapp.generated.resources.Res
-import nuvio.composeapp.generated.resources.compose_about_version_format
 import nuvio.composeapp.generated.resources.compose_settings_page_account
 import nuvio.composeapp.generated.resources.compose_settings_page_advanced
 import nuvio.composeapp.generated.resources.compose_settings_page_appearance
@@ -37,6 +25,7 @@ import nuvio.composeapp.generated.resources.compose_settings_page_integrations
 import nuvio.composeapp.generated.resources.compose_settings_page_licenses_attributions
 import nuvio.composeapp.generated.resources.compose_settings_page_notifications
 import nuvio.composeapp.generated.resources.compose_settings_page_playback
+import nuvio.composeapp.generated.resources.compose_settings_page_privacy_policy
 import nuvio.composeapp.generated.resources.compose_settings_page_supporters_contributors
 import nuvio.composeapp.generated.resources.compose_settings_root_account_description
 import nuvio.composeapp.generated.resources.compose_settings_root_appearance_description
@@ -46,23 +35,24 @@ import nuvio.composeapp.generated.resources.compose_settings_root_content_discov
 import nuvio.composeapp.generated.resources.compose_settings_root_general_section
 import nuvio.composeapp.generated.resources.compose_settings_root_integrations_description
 import nuvio.composeapp.generated.resources.compose_settings_root_notifications_description
-import nuvio.composeapp.generated.resources.settings_nuvio_enhanced_description
-import nuvio.composeapp.generated.resources.settings_nuvio_enhanced_section
-import nuvio.composeapp.generated.resources.settings_nuvio_enhanced_title
-import nuvio.composeapp.generated.resources.compose_settings_root_profile_description
-import nuvio.composeapp.generated.resources.compose_settings_root_profile_title
-import nuvio.composeapp.generated.resources.compose_settings_root_trakt_description
+import nuvio.composeapp.generated.resources.compose_settings_root_privacy_policy_description
+import nuvio.composeapp.generated.resources.compose_settings_root_switch_profile_description
+import nuvio.composeapp.generated.resources.compose_settings_root_switch_profile_title
+import nuvio.composeapp.generated.resources.compose_settings_root_tracking_description
 import nuvio.composeapp.generated.resources.compose_settings_root_about_section
 import nuvio.composeapp.generated.resources.compose_settings_root_account_section
 import nuvio.composeapp.generated.resources.compose_settings_root_advanced_description
 import nuvio.composeapp.generated.resources.compose_settings_root_advanced_section
 import nuvio.composeapp.generated.resources.compose_settings_page_content_discovery
+import nuvio.composeapp.generated.resources.compose_settings_page_tracking
 import nuvio.composeapp.generated.resources.settings_playback_subtitle
 import nuvio.composeapp.generated.resources.updates_debug_test_description
 import nuvio.composeapp.generated.resources.updates_debug_test_title
 import nuvio.composeapp.generated.resources.about_supporters_contributors_subtitle
 import nuvio.composeapp.generated.resources.about_licenses_attributions_subtitle
 import org.jetbrains.compose.resources.stringResource
+
+private const val PRIVACY_POLICY_URL = "https://nuvio.tv/privacy-policy"
 
 internal fun LazyListScope.settingsRootContent(
     isTablet: Boolean,
@@ -71,8 +61,8 @@ internal fun LazyListScope.settingsRootContent(
     onAdvancedClick: () -> Unit,
     onNotificationsClick: () -> Unit,
     onContentDiscoveryClick: () -> Unit,
-    onNuvioEnhancedClick: () -> Unit,
     onIntegrationsClick: () -> Unit,
+    onTrackingClick: () -> Unit,
     onSupportersContributorsClick: () -> Unit,
     onLicensesAttributionsClick: () -> Unit,
     onCheckForUpdatesClick: (() -> Unit)? = null,
@@ -81,7 +71,6 @@ internal fun LazyListScope.settingsRootContent(
     onSwitchProfileClick: (() -> Unit)? = null,
     showNotificationsEntry: Boolean = true,
     showAccountSection: Boolean = true,
-    showEnhancedSection: Boolean = true,
     showGeneralSection: Boolean = true,
     showAboutSection: Boolean = true,
     showAdvancedSection: Boolean = true,
@@ -97,8 +86,8 @@ internal fun LazyListScope.settingsRootContent(
                 SettingsGroup(isTablet = isTablet) {
                     if (onSwitchProfileClick != null) {
                         SettingsNavigationRow(
-                            title = stringResource(Res.string.compose_settings_root_profile_title),
-                            description = stringResource(Res.string.compose_settings_root_profile_description),
+                            title = stringResource(Res.string.compose_settings_root_switch_profile_title),
+                            description = stringResource(Res.string.compose_settings_root_switch_profile_description),
                             icon = Icons.Rounded.People,
                             isTablet = isTablet,
                             onClick = onSwitchProfileClick,
@@ -112,28 +101,13 @@ internal fun LazyListScope.settingsRootContent(
                         isTablet = isTablet,
                         onClick = onAccountClick,
                     )
-                }
-            }
-        }
-    }
-    if (showEnhancedSection) {
-        item {
-            val enhancedSettings by remember {
-                NuvioEnhancedSettingsRepository.ensureLoaded()
-                NuvioEnhancedSettingsRepository.uiState
-            }.collectAsStateWithLifecycle()
-            SettingsSection(
-                title = stringResource(Res.string.settings_nuvio_enhanced_section),
-                isTablet = isTablet,
-            ) {
-                SettingsGroup(isTablet = isTablet) {
+                    SettingsGroupDivider(isTablet = isTablet)
                     SettingsNavigationRow(
-                        title = stringResource(Res.string.settings_nuvio_enhanced_title),
-                        description = stringResource(Res.string.settings_nuvio_enhanced_description),
-                        icon = Icons.Rounded.AutoAwesome,
+                        title = stringResource(Res.string.compose_settings_page_tracking),
+                        description = stringResource(Res.string.compose_settings_root_tracking_description),
+                        icon = Icons.Default.Sync,
                         isTablet = isTablet,
-                        highlighted = enhancedSettings.hasNewFeatures,
-                        onClick = onNuvioEnhancedClick,
+                        onClick = onTrackingClick,
                     )
                 }
             }
@@ -193,6 +167,7 @@ internal fun LazyListScope.settingsRootContent(
     }
     if (showAboutSection) {
         item {
+            val uriHandler = LocalUriHandler.current
             SettingsSection(
                 title = stringResource(Res.string.compose_settings_root_about_section),
                 isTablet = isTablet,
@@ -203,12 +178,19 @@ internal fun LazyListScope.settingsRootContent(
                             title = stringResource(Res.string.compose_settings_page_supporters_contributors),
                             description = stringResource(Res.string.about_supporters_contributors_subtitle),
                             icon = Icons.Rounded.Favorite,
-                            enabled = false,
                             isTablet = isTablet,
-                            onClick = {},
+                            onClick = onSupportersContributorsClick,
                         )
                         SettingsGroupDivider(isTablet = isTablet)
                     }
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.compose_settings_page_privacy_policy),
+                        description = stringResource(Res.string.compose_settings_root_privacy_policy_description),
+                        icon = Icons.Rounded.Policy,
+                        isTablet = isTablet,
+                        onClick = { uriHandler.openUri(PRIVACY_POLICY_URL) },
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
                     SettingsNavigationRow(
                         title = stringResource(Res.string.compose_settings_page_licenses_attributions),
                         description = stringResource(Res.string.about_licenses_attributions_subtitle),
@@ -263,45 +245,6 @@ internal fun LazyListScope.settingsRootContent(
     if (showAttribution) {
         item(key = "settings-attribution") {
             SettingsAttribution(isTablet = isTablet)
-        }
-    }
-    item {
-        val uriHandler = LocalUriHandler.current
-        androidx.compose.foundation.layout.Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = if (isTablet) 20.dp else 16.dp),
-        ) {
-            Text(
-                text = "Nuvio Enhanced",
-                modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = "github.com/yesnt10/NuvioMobile-Enhanced",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp)
-                    .clickable {
-                        uriHandler.openUri("https://github.com/yesnt10/NuvioMobile-Enhanced")
-                    },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = stringResource(
-                    Res.string.compose_about_version_format,
-                    AppVersionConfig.VERSION_NAME,
-                    AppVersionConfig.VERSION_CODE,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
         }
     }
 }

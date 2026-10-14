@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +57,9 @@ fun DownloadsScreen(
         DownloadsRepository.ensureLoaded()
         DownloadsRepository.uiState
     }.collectAsStateWithLifecycle()
+    LaunchedEffect(uiState.completedItems.size) {
+        DownloadsRepository.markCompletedSeen()
+    }
 
     var selectedShowId by rememberSaveable(initialShowId) { mutableStateOf(initialShowId) }
     var downloadPendingDeletionId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -130,6 +134,7 @@ fun DownloadsScreen(
             title = stringResource(Res.string.action_delete_confirm_title),
             message = stringResource(Res.string.action_delete_confirm_message),
             isVisible = true,
+            destructive = true,
             confirmText = stringResource(Res.string.action_yes),
             dismissText = stringResource(Res.string.action_no),
             onConfirm = {
@@ -345,7 +350,6 @@ private fun DownloadRow(
         item = item,
         displayTitle = displayTitle,
     )
-    val progressInfoLines = item.downloadProgressInfoLines()
 
     Surface(
         modifier = Modifier
@@ -390,19 +394,6 @@ private fun DownloadRow(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (item.status == DownloadStatus.Downloading) {
-                        progressInfoLines
-                            .take(2)
-                            .forEach { line ->
-                                Text(
-                                    text = line,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {

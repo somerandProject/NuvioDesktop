@@ -7,10 +7,6 @@ bool NuvioSupportsAlternateAppIcons(void) {
     return UIApplication.sharedApplication.supportsAlternateIcons;
 }
 
-int NuvioAppIconSupportsAlternateIcons(void) {
-    return UIApplication.sharedApplication.supportsAlternateIcons ? 1 : 0;
-}
-
 bool NuvioIsCurrentAlternateAppIcon(const char *name) {
     NSString *currentName = UIApplication.sharedApplication.alternateIconName;
     if (name == NULL) {
@@ -42,11 +38,4 @@ void NuvioSetAlternateAppIconName(const char *name, NuvioAppIconCompletion compl
     } else {
         dispatch_async(dispatch_get_main_queue(), changeIcon);
     }
-}
-
-void NuvioAppIconSetAlternateIconName(const char *iconName) {
-    NSString *name = iconName == NULL ? nil : [NSString stringWithUTF8String:iconName];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [UIApplication.sharedApplication setAlternateIconName:name completionHandler:nil];
-    });
 }

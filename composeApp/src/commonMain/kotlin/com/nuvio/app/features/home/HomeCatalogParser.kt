@@ -51,7 +51,7 @@ internal object HomeCatalogParser {
                     banner = meta.string("banner") ?: meta.string("background") ?: landscapePoster,
                     logo = meta.string("logo"),
                     posterShape = meta.string("posterShape").toPosterShape(),
-                    description = meta.string("description") ?: meta.string("overview"),
+                    description = meta.string("description"),
                     releaseInfo = meta.string("releaseInfo"),
                     rawReleaseDate = meta.string("released"),
                     imdbRating = meta.string("imdbRating"),

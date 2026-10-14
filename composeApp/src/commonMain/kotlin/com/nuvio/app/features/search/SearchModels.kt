@@ -3,7 +3,6 @@ package com.nuvio.app.features.search
 import com.nuvio.app.features.catalog.CatalogTarget
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.HomeCatalogSection
-import com.nuvio.app.features.tmdb.TmdbPersonSearchResult
 
 enum class SearchEmptyStateReason {
     NoActiveAddons,
@@ -15,7 +14,6 @@ enum class SearchEmptyStateReason {
 data class SearchUiState(
     val isLoading: Boolean = false,
     val sections: List<HomeCatalogSection> = emptyList(),
-    val people: List<TmdbPersonSearchResult> = emptyList(),
     val emptyStateReason: SearchEmptyStateReason? = null,
     val errorMessage: String? = null,
 )

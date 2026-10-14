@@ -30,10 +30,6 @@ actual object PlayerSettingsStorage {
     private const val volumeBoostEnabledKey = "volume_boost_enabled"
     private const val keyboardSeekStepSecondsKey = "keyboard_seek_step_seconds"
     private const val touchGesturesEnabledKey = "touch_gestures_enabled"
-    private const val rememberPlayerBrightnessEnabledKey = "remember_player_brightness_enabled"
-    private const val rememberPlayerChoicesEnabledKey = "remember_player_choices_enabled"
-    private const val rememberedPlayerBrightnessKey = "remembered_player_brightness"
-    private const val volumeBoostPercentKey = "volume_boost_percent"
     private const val externalPlayerEnabledKey = "external_player_enabled"
     private const val externalPlayerForwardSubtitlesKey = "external_player_forward_subtitles"
     private const val externalPlayerSendSkipSegmentsKey = "external_player_send_skip_segments"
@@ -49,20 +45,16 @@ actual object PlayerSettingsStorage {
     private const val subtitleOutlineWidthKey = "subtitle_outline_width"
     private const val subtitleBoldKey = "subtitle_bold"
     private const val subtitleFontSizeSpKey = "subtitle_font_size_sp"
-    private const val subtitleFontFamilyKey = "subtitle_font_family"
-    private const val subtitleCustomFontNameKey = "subtitle_custom_font_name"
-    private const val subtitleCustomFontPathKey = "subtitle_custom_font_path"
     private const val subtitleBottomOffsetKey = "subtitle_bottom_offset"
+    private const val subtitleStripSdhKey = "subtitle_strip_sdh"
     private const val subtitleUseForcedSubtitlesKey = "subtitle_use_forced_subtitles"
     private const val subtitleShowOnlyPreferredLanguagesKey = "subtitle_show_only_preferred_languages"
-    private const val addonSubtitleStartupModeKey = "addon_subtitle_startup_mode"
     private const val streamReuseLastLinkEnabledKey = "stream_reuse_last_link_enabled"
     private const val streamReuseLastLinkCacheHoursKey = "stream_reuse_last_link_cache_hours"
     private const val androidPlaybackEngineKey = "android_playback_engine"
     private const val androidLibmpvVideoOutputKey = "android_libmpv_video_output"
     private const val androidLibmpvHardwareDecodingEnabledKey = "android_libmpv_hardware_decoding_enabled"
     private const val androidLibmpvYuv420pEnabledKey = "android_libmpv_yuv420p_enabled"
-    private const val androidMemorySafeBufferEnabledKey = "android_memory_safe_buffer_enabled"
     private const val decoderPriorityKey = "decoder_priority"
     private const val mapDV7ToHevcKey = "map_dv7_to_hevc"
     private const val tunnelingEnabledKey = "tunneling_enabled"
@@ -92,6 +84,7 @@ actual object PlayerSettingsStorage {
     private const val introDbApiKeyKey = "introdb_api_key"
     private const val introSubmitEnabledKey = "intro_submit_enabled"
     private const val streamAutoPlayNextEpisodeEnabledKey = "stream_auto_play_next_episode_enabled"
+    private const val streamAutoPlayNextEpisodeFallbackEnabledKey = "stream_auto_play_next_episode_fallback_enabled"
     private const val streamAutoPlayPreferBingeGroupKey = "stream_auto_play_prefer_binge_group"
     private const val streamAutoPlayReuseBingeGroupKey = "stream_auto_play_reuse_binge_group"
     private const val nextEpisodeThresholdModeKey = "next_episode_threshold_mode"
@@ -128,9 +121,6 @@ actual object PlayerSettingsStorage {
         keyboardSeekStepSecondsKey,
         nvidiaRtxSuperResolutionEnabledKey,
         touchGesturesEnabledKey,
-        rememberPlayerBrightnessEnabledKey,
-        rememberPlayerChoicesEnabledKey,
-        rememberedPlayerBrightnessKey,
         externalPlayerEnabledKey,
         externalPlayerForwardSubtitlesKey,
         externalPlayerSendSkipSegmentsKey,
@@ -146,20 +136,16 @@ actual object PlayerSettingsStorage {
         subtitleOutlineWidthKey,
         subtitleBoldKey,
         subtitleFontSizeSpKey,
-        subtitleFontFamilyKey,
-        subtitleCustomFontNameKey,
-        subtitleCustomFontPathKey,
         subtitleBottomOffsetKey,
+        subtitleStripSdhKey,
         subtitleUseForcedSubtitlesKey,
         subtitleShowOnlyPreferredLanguagesKey,
-        addonSubtitleStartupModeKey,
         streamReuseLastLinkEnabledKey,
         streamReuseLastLinkCacheHoursKey,
         androidPlaybackEngineKey,
         androidLibmpvVideoOutputKey,
         androidLibmpvHardwareDecodingEnabledKey,
         androidLibmpvYuv420pEnabledKey,
-        androidMemorySafeBufferEnabledKey,
         decoderPriorityKey,
         mapDV7ToHevcKey,
         tunnelingEnabledKey,
@@ -176,6 +162,7 @@ actual object PlayerSettingsStorage {
         animeSkipEnabledKey,
         animeSkipClientIdKey,
         streamAutoPlayNextEpisodeEnabledKey,
+        streamAutoPlayNextEpisodeFallbackEnabledKey,
         streamAutoPlayPreferBingeGroupKey,
         streamAutoPlayReuseBingeGroupKey,
         nextEpisodeThresholdModeKey,
@@ -355,43 +342,6 @@ actual object PlayerSettingsStorage {
 
     actual fun saveTouchGesturesEnabled(enabled: Boolean) {
         saveBoolean(touchGesturesEnabledKey, enabled)
-    }
-
-    actual fun loadRememberPlayerBrightnessEnabled(): Boolean? =
-        loadBoolean(rememberPlayerBrightnessEnabledKey)
-
-    actual fun saveRememberPlayerBrightnessEnabled(enabled: Boolean) {
-        saveBoolean(rememberPlayerBrightnessEnabledKey, enabled)
-    }
-
-    actual fun loadRememberPlayerChoicesEnabled(): Boolean? =
-        loadBoolean(rememberPlayerChoicesEnabledKey)
-
-    actual fun saveRememberPlayerChoicesEnabled(enabled: Boolean) {
-        saveBoolean(rememberPlayerChoicesEnabledKey, enabled)
-    }
-
-    actual fun loadRememberedPlayerBrightness(): Float? {
-        val key = ProfileScopedKey.of(rememberedPlayerBrightnessKey)
-        val defaults = NSUserDefaults.standardUserDefaults
-        return if (defaults.objectForKey(key) != null) {
-            defaults.floatForKey(key).coerceIn(0.02f, 1f)
-        } else {
-            null
-        }
-    }
-
-    actual fun saveRememberedPlayerBrightness(level: Float) {
-        NSUserDefaults.standardUserDefaults.setFloat(
-            level.coerceIn(0.02f, 1f),
-            forKey = ProfileScopedKey.of(rememberedPlayerBrightnessKey),
-        )
-    }
-
-    actual fun loadVolumeBoostPercent(): Int? = loadInt(volumeBoostPercentKey)
-
-    actual fun saveVolumeBoostPercent(percent: Int) {
-        saveInt(volumeBoostPercentKey, percent.coerceIn(100, 200))
     }
 
     actual fun loadExternalPlayerEnabled(): Boolean? {
@@ -574,37 +524,6 @@ actual object PlayerSettingsStorage {
         NSUserDefaults.standardUserDefaults.setInteger(fontSizeSp.toLong(), forKey = ProfileScopedKey.of(subtitleFontSizeSpKey))
     }
 
-    actual fun loadSubtitleFontFamily(): String? =
-        NSUserDefaults.standardUserDefaults.stringForKey(ProfileScopedKey.of(subtitleFontFamilyKey))
-
-    actual fun saveSubtitleFontFamily(fontFamily: String) {
-        NSUserDefaults.standardUserDefaults.setObject(fontFamily, forKey = ProfileScopedKey.of(subtitleFontFamilyKey))
-    }
-
-    actual fun loadSubtitleCustomFontName(): String? =
-        NSUserDefaults.standardUserDefaults.stringForKey(ProfileScopedKey.of(subtitleCustomFontNameKey))
-
-    actual fun saveSubtitleCustomFontName(fontName: String?) {
-        val key = ProfileScopedKey.of(subtitleCustomFontNameKey)
-        if (fontName.isNullOrBlank()) {
-            NSUserDefaults.standardUserDefaults.removeObjectForKey(key)
-        } else {
-            NSUserDefaults.standardUserDefaults.setObject(fontName, forKey = key)
-        }
-    }
-
-    actual fun loadSubtitleCustomFontPath(): String? =
-        NSUserDefaults.standardUserDefaults.stringForKey(ProfileScopedKey.of(subtitleCustomFontPathKey))
-
-    actual fun saveSubtitleCustomFontPath(fontPath: String?) {
-        val key = ProfileScopedKey.of(subtitleCustomFontPathKey)
-        if (fontPath.isNullOrBlank()) {
-            NSUserDefaults.standardUserDefaults.removeObjectForKey(key)
-        } else {
-            NSUserDefaults.standardUserDefaults.setObject(fontPath, forKey = key)
-        }
-    }
-
     actual fun loadSubtitleBottomOffset(): Int? {
         val defaults = NSUserDefaults.standardUserDefaults
         val key = ProfileScopedKey.of(subtitleBottomOffsetKey)
@@ -619,6 +538,12 @@ actual object PlayerSettingsStorage {
         NSUserDefaults.standardUserDefaults.setInteger(bottomOffset.toLong(), forKey = ProfileScopedKey.of(subtitleBottomOffsetKey))
     }
 
+    actual fun loadSubtitleStripSdh(): Boolean? = loadBoolean(subtitleStripSdhKey)
+
+    actual fun saveSubtitleStripSdh(enabled: Boolean) {
+        saveBoolean(subtitleStripSdhKey, enabled)
+    }
+
     actual fun loadSubtitleUseForcedSubtitles(): Boolean? = loadBoolean(subtitleUseForcedSubtitlesKey)
 
     actual fun saveSubtitleUseForcedSubtitles(enabled: Boolean) {
@@ -629,16 +554,6 @@ actual object PlayerSettingsStorage {
 
     actual fun saveSubtitleShowOnlyPreferredLanguages(enabled: Boolean) {
         saveBoolean(subtitleShowOnlyPreferredLanguagesKey, enabled)
-    }
-
-    actual fun loadAddonSubtitleStartupMode(): String? {
-        val defaults = NSUserDefaults.standardUserDefaults
-        val key = ProfileScopedKey.of(addonSubtitleStartupModeKey)
-        return defaults.stringForKey(key)
-    }
-
-    actual fun saveAddonSubtitleStartupMode(mode: String) {
-        NSUserDefaults.standardUserDefaults.setObject(mode, forKey = ProfileScopedKey.of(addonSubtitleStartupModeKey))
     }
 
     actual fun loadStreamReuseLastLinkEnabled(): Boolean? {
@@ -709,13 +624,6 @@ actual object PlayerSettingsStorage {
 
     actual fun saveAndroidLibmpvYuv420pEnabled(enabled: Boolean) {
         NSUserDefaults.standardUserDefaults.setBool(enabled, forKey = ProfileScopedKey.of(androidLibmpvYuv420pEnabledKey))
-    }
-
-    actual fun loadAndroidMemorySafeBufferEnabled(): Boolean? =
-        loadBoolean(androidMemorySafeBufferEnabledKey)
-
-    actual fun saveAndroidMemorySafeBufferEnabled(enabled: Boolean) {
-        saveBoolean(androidMemorySafeBufferEnabledKey, enabled)
     }
 
     actual fun loadDecoderPriority(): Int? {
@@ -956,15 +864,12 @@ actual object PlayerSettingsStorage {
 
     actual fun loadIntroDbApiKey(): String? {
         val defaults = NSUserDefaults.standardUserDefaults
-        return defaults.stringForKey(introDbApiKeyKey)
-            ?.takeIf { it.isNotBlank() }
-            ?: defaults.stringForKey(ProfileScopedKey.of(introDbApiKeyKey))
+        val key = ProfileScopedKey.of(introDbApiKeyKey)
+        return defaults.stringForKey(key)
     }
 
     actual fun saveIntroDbApiKey(apiKey: String) {
-        val defaults = NSUserDefaults.standardUserDefaults
-        defaults.setObject(apiKey, forKey = introDbApiKeyKey)
-        defaults.setObject(apiKey, forKey = ProfileScopedKey.of(introDbApiKeyKey))
+        NSUserDefaults.standardUserDefaults.setObject(apiKey, forKey = ProfileScopedKey.of(introDbApiKeyKey))
     }
 
     actual fun loadIntroSubmitEnabled(): Boolean? {
@@ -993,6 +898,20 @@ actual object PlayerSettingsStorage {
 
     actual fun saveStreamAutoPlayNextEpisodeEnabled(enabled: Boolean) {
         NSUserDefaults.standardUserDefaults.setBool(enabled, forKey = ProfileScopedKey.of(streamAutoPlayNextEpisodeEnabledKey))
+    }
+
+    actual fun loadStreamAutoPlayNextEpisodeFallbackEnabled(): Boolean? {
+        val defaults = NSUserDefaults.standardUserDefaults
+        val key = ProfileScopedKey.of(streamAutoPlayNextEpisodeFallbackEnabledKey)
+        return if (defaults.objectForKey(key) != null) {
+            defaults.boolForKey(key)
+        } else {
+            null
+        }
+    }
+
+    actual fun saveStreamAutoPlayNextEpisodeFallbackEnabled(enabled: Boolean) {
+        NSUserDefaults.standardUserDefaults.setBool(enabled, forKey = ProfileScopedKey.of(streamAutoPlayNextEpisodeFallbackEnabledKey))
     }
 
     actual fun loadStreamAutoPlayPreferBingeGroup(): Boolean? {
@@ -1201,9 +1120,6 @@ actual object PlayerSettingsStorage {
         loadVolumeBoostEnabled()?.let { put(volumeBoostEnabledKey, encodeSyncBoolean(it)) }
         loadKeyboardSeekStepSeconds()?.let { put(keyboardSeekStepSecondsKey, encodeSyncInt(it)) }
         loadTouchGesturesEnabled()?.let { put(touchGesturesEnabledKey, encodeSyncBoolean(it)) }
-        loadRememberPlayerBrightnessEnabled()?.let { put(rememberPlayerBrightnessEnabledKey, encodeSyncBoolean(it)) }
-        loadRememberPlayerChoicesEnabled()?.let { put(rememberPlayerChoicesEnabledKey, encodeSyncBoolean(it)) }
-        loadRememberedPlayerBrightness()?.let { put(rememberedPlayerBrightnessKey, encodeSyncFloat(it)) }
         loadExternalPlayerEnabled()?.let { put(externalPlayerEnabledKey, encodeSyncBoolean(it)) }
         loadExternalPlayerForwardSubtitles()?.let { put(externalPlayerForwardSubtitlesKey, encodeSyncBoolean(it)) }
         loadExternalPlayerId()?.let { put(externalPlayerIdKey, encodeSyncString(it)) }
@@ -1218,13 +1134,10 @@ actual object PlayerSettingsStorage {
         loadSubtitleOutlineWidth()?.let { put(subtitleOutlineWidthKey, encodeSyncInt(it)) }
         loadSubtitleBold()?.let { put(subtitleBoldKey, encodeSyncBoolean(it)) }
         loadSubtitleFontSizeSp()?.let { put(subtitleFontSizeSpKey, encodeSyncInt(it)) }
-        loadSubtitleFontFamily()?.let { put(subtitleFontFamilyKey, encodeSyncString(it)) }
-        loadSubtitleCustomFontName()?.let { put(subtitleCustomFontNameKey, encodeSyncString(it)) }
-        loadSubtitleCustomFontPath()?.let { put(subtitleCustomFontPathKey, encodeSyncString(it)) }
         loadSubtitleBottomOffset()?.let { put(subtitleBottomOffsetKey, encodeSyncInt(it)) }
+        loadSubtitleStripSdh()?.let { put(subtitleStripSdhKey, encodeSyncBoolean(it)) }
         loadSubtitleUseForcedSubtitles()?.let { put(subtitleUseForcedSubtitlesKey, encodeSyncBoolean(it)) }
         loadSubtitleShowOnlyPreferredLanguages()?.let { put(subtitleShowOnlyPreferredLanguagesKey, encodeSyncBoolean(it)) }
-        loadAddonSubtitleStartupMode()?.let { put(addonSubtitleStartupModeKey, encodeSyncString(it)) }
         loadStreamReuseLastLinkEnabled()?.let { put(streamReuseLastLinkEnabledKey, encodeSyncBoolean(it)) }
         loadStreamReuseLastLinkCacheHours()?.let { put(streamReuseLastLinkCacheHoursKey, encodeSyncInt(it)) }
         loadAndroidPlaybackEngine()?.let { put(androidPlaybackEngineKey, encodeSyncString(it)) }
@@ -1233,7 +1146,6 @@ actual object PlayerSettingsStorage {
             put(androidLibmpvHardwareDecodingEnabledKey, encodeSyncBoolean(it))
         }
         loadAndroidLibmpvYuv420pEnabled()?.let { put(androidLibmpvYuv420pEnabledKey, encodeSyncBoolean(it)) }
-        loadAndroidMemorySafeBufferEnabled()?.let { put(androidMemorySafeBufferEnabledKey, encodeSyncBoolean(it)) }
         loadDecoderPriority()?.let { put(decoderPriorityKey, encodeSyncInt(it)) }
         loadMapDV7ToHevc()?.let { put(mapDV7ToHevcKey, encodeSyncBoolean(it)) }
         loadTunnelingEnabled()?.let { put(tunnelingEnabledKey, encodeSyncBoolean(it)) }
@@ -1250,6 +1162,7 @@ actual object PlayerSettingsStorage {
         loadAnimeSkipEnabled()?.let { put(animeSkipEnabledKey, encodeSyncBoolean(it)) }
         loadAnimeSkipClientId()?.let { put(animeSkipClientIdKey, encodeSyncString(it)) }
         loadStreamAutoPlayNextEpisodeEnabled()?.let { put(streamAutoPlayNextEpisodeEnabledKey, encodeSyncBoolean(it)) }
+        loadStreamAutoPlayNextEpisodeFallbackEnabled()?.let { put(streamAutoPlayNextEpisodeFallbackEnabledKey, encodeSyncBoolean(it)) }
         loadStreamAutoPlayPreferBingeGroup()?.let { put(streamAutoPlayPreferBingeGroupKey, encodeSyncBoolean(it)) }
         loadStreamAutoPlayReuseBingeGroup()?.let { put(streamAutoPlayReuseBingeGroupKey, encodeSyncBoolean(it)) }
         loadNextEpisodeThresholdMode()?.let { put(nextEpisodeThresholdModeKey, encodeSyncString(it)) }
@@ -1291,9 +1204,6 @@ actual object PlayerSettingsStorage {
         payload.decodeSyncBoolean(volumeBoostEnabledKey)?.let(::saveVolumeBoostEnabled)
         payload.decodeSyncInt(keyboardSeekStepSecondsKey)?.let(::saveKeyboardSeekStepSeconds)
         payload.decodeSyncBoolean(touchGesturesEnabledKey)?.let(::saveTouchGesturesEnabled)
-        payload.decodeSyncBoolean(rememberPlayerBrightnessEnabledKey)?.let(::saveRememberPlayerBrightnessEnabled)
-        payload.decodeSyncBoolean(rememberPlayerChoicesEnabledKey)?.let(::saveRememberPlayerChoicesEnabled)
-        payload.decodeSyncFloat(rememberedPlayerBrightnessKey)?.let(::saveRememberedPlayerBrightness)
         payload.decodeSyncBoolean(externalPlayerEnabledKey)?.let(::saveExternalPlayerEnabled)
         payload.decodeSyncBoolean(externalPlayerForwardSubtitlesKey)?.let(::saveExternalPlayerForwardSubtitles)
         payload.decodeSyncString(externalPlayerIdKey)?.let(::saveExternalPlayerId)
@@ -1308,13 +1218,10 @@ actual object PlayerSettingsStorage {
         payload.decodeSyncInt(subtitleOutlineWidthKey)?.let(::saveSubtitleOutlineWidth)
         payload.decodeSyncBoolean(subtitleBoldKey)?.let(::saveSubtitleBold)
         payload.decodeSyncInt(subtitleFontSizeSpKey)?.let(::saveSubtitleFontSizeSp)
-        payload.decodeSyncString(subtitleFontFamilyKey)?.let(::saveSubtitleFontFamily)
-        payload.decodeSyncString(subtitleCustomFontNameKey)?.let(::saveSubtitleCustomFontName)
-        payload.decodeSyncString(subtitleCustomFontPathKey)?.let(::saveSubtitleCustomFontPath)
         payload.decodeSyncInt(subtitleBottomOffsetKey)?.let(::saveSubtitleBottomOffset)
+        payload.decodeSyncBoolean(subtitleStripSdhKey)?.let(::saveSubtitleStripSdh)
         payload.decodeSyncBoolean(subtitleUseForcedSubtitlesKey)?.let(::saveSubtitleUseForcedSubtitles)
         payload.decodeSyncBoolean(subtitleShowOnlyPreferredLanguagesKey)?.let(::saveSubtitleShowOnlyPreferredLanguages)
-        payload.decodeSyncString(addonSubtitleStartupModeKey)?.let(::saveAddonSubtitleStartupMode)
         payload.decodeSyncBoolean(streamReuseLastLinkEnabledKey)?.let(::saveStreamReuseLastLinkEnabled)
         payload.decodeSyncInt(streamReuseLastLinkCacheHoursKey)?.let(::saveStreamReuseLastLinkCacheHours)
         payload.decodeSyncString(androidPlaybackEngineKey)?.let(::saveAndroidPlaybackEngine)
@@ -1322,7 +1229,6 @@ actual object PlayerSettingsStorage {
         payload.decodeSyncBoolean(androidLibmpvHardwareDecodingEnabledKey)
             ?.let(::saveAndroidLibmpvHardwareDecodingEnabled)
         payload.decodeSyncBoolean(androidLibmpvYuv420pEnabledKey)?.let(::saveAndroidLibmpvYuv420pEnabled)
-        payload.decodeSyncBoolean(androidMemorySafeBufferEnabledKey)?.let(::saveAndroidMemorySafeBufferEnabled)
         payload.decodeSyncInt(decoderPriorityKey)?.let(::saveDecoderPriority)
         payload.decodeSyncBoolean(mapDV7ToHevcKey)?.let(::saveMapDV7ToHevc)
         payload.decodeSyncBoolean(tunnelingEnabledKey)?.let(::saveTunnelingEnabled)
@@ -1340,6 +1246,7 @@ actual object PlayerSettingsStorage {
         payload.decodeSyncString(animeSkipClientIdKey)?.let(::saveAnimeSkipClientId)
         payload.decodeSyncString(introDbApiKeyKey)?.let(::saveIntroDbApiKey)
         payload.decodeSyncBoolean(streamAutoPlayNextEpisodeEnabledKey)?.let(::saveStreamAutoPlayNextEpisodeEnabled)
+        payload.decodeSyncBoolean(streamAutoPlayNextEpisodeFallbackEnabledKey)?.let(::saveStreamAutoPlayNextEpisodeFallbackEnabled)
         payload.decodeSyncBoolean(streamAutoPlayPreferBingeGroupKey)?.let(::saveStreamAutoPlayPreferBingeGroup)
         payload.decodeSyncBoolean(streamAutoPlayReuseBingeGroupKey)?.let(::saveStreamAutoPlayReuseBingeGroup)
         payload.decodeSyncString(nextEpisodeThresholdModeKey)?.let(::saveNextEpisodeThresholdMode)

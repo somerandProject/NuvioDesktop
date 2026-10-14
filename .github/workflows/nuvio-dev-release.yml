@@ -1,4 +1,4 @@
-﻿name: Release NuvioDev
+name: Release NuvioDev
 
 # Builds and publishes NuvioDev releases: Windows MSI, Linux AppImage and
 # Android APKs. Releases are tagged "NuvioDev-v<version>" and a rolling
@@ -124,15 +124,7 @@ jobs:
       - name: Fetch Windows runtime
         shell: bash
         run: |
-          # This fork's LFS quota is exhausted, so materialise the runtime from
-          # the upstream project's LFS store (same OID, different budget).
-          # Note: "git lfs pull" ignores "-c lfs.url", so use an explicit remote.
-          git lfs pull --include="composeApp/src/desktopMain/native/windows/runtime/**" --exclude="" || {
-            echo "Origin LFS pull failed; fetching the same objects from upstream..." >&2
-            git remote add lfs-upstream https://github.com/NuvioMedia/NuvioDesktop.git 2>/dev/null || true
-            git lfs fetch lfs-upstream --include="composeApp/src/desktopMain/native/windows/runtime/**"
-            git lfs checkout
-          }
+          git lfs pull --include="composeApp/src/desktopMain/native/windows/runtime/**" --exclude=""
           test -f composeApp/src/desktopMain/native/windows/runtime/libmpv-2.dll
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -406,7 +398,7 @@ jobs:
             echo
             echo "## Highlights"
             echo
-            echo "- In-app updates: **Settings â†’ About â†’ Check for updates**, plus a seamless update banner."
+            echo "- In-app updates: **Settings → About → Check for updates**, plus a seamless update banner."
             echo "- Desktop: remembers window size/position, **always-on-top** toggle, and **minimize to tray**."
             echo "- Player: **A-B loop**, frame step, subtitle delay nudge, and more keyboard shortcuts."
             echo "- Skip intro/outro/recap now works out of the box (introdb default endpoint)."

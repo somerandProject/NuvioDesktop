@@ -1,12 +1,22 @@
 package com.nuvio.app.features.home
 
+import com.nuvio.app.features.addons.AddonRepository
+import androidx.compose.ui.text.intl.Locale
 import com.nuvio.app.features.addons.ManagedAddon
+import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.collection.Collection
 import com.nuvio.app.features.collection.CollectionRepository
-import kotlinx.coroutines.runBlocking
+import com.nuvio.app.features.servers.ServerCatalog
+import com.nuvio.app.features.servers.ServerRepository
+import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -32,38 +42,17 @@ data class HomeCatalogSettingsItem(
 
 data class HomeCatalogSettingsUiState(
     val heroEnabled: Boolean = true,
-    val heroAutoScrollEnabled: Boolean = true,
-    val heroMotionPreviewEnabled: Boolean = false,
     val showCatalogType: Boolean = true,
     val hideUnreleasedContent: Boolean = false,
-    val hideCatalogUnderline: Boolean = false,
-    val catalogColumnCount: Int = 3,
-    val catalogPosterSize: CatalogPosterSize = CatalogPosterSize.Regular,
-    val catalogPosterLayout: CatalogPosterLayout = CatalogPosterLayout.Portrait,
-    val homeCatalogRowCount: Int = 1,
     val items: List<HomeCatalogSettingsItem> = emptyList(),
 ) {
     val signature: String
         get() = buildString {
             append(heroEnabled)
             append('|')
-            append(heroAutoScrollEnabled)
-            append('|')
-            append(heroMotionPreviewEnabled)
-            append('|')
             append(showCatalogType)
             append('|')
             append(hideUnreleasedContent)
-            append('|')
-            append(hideCatalogUnderline)
-            append('|')
-            append(catalogColumnCount)
-            append('|')
-            append(catalogPosterSize.name)
-            append('|')
-            append(catalogPosterLayout.name)
-            append('|')
-            append(homeCatalogRowCount)
             append('|')
             append(
                 items.joinToString(separator = "|") { item ->
@@ -82,28 +71,10 @@ internal data class HomeCatalogPreference(
 
 internal data class HomeCatalogSettingsSnapshot(
     val heroEnabled: Boolean,
-    val heroAutoScrollEnabled: Boolean,
-    val heroMotionPreviewEnabled: Boolean,
     val showCatalogType: Boolean,
     val hideUnreleasedContent: Boolean,
-    val hideCatalogUnderline: Boolean,
-    val catalogColumnCount: Int,
-    val catalogPosterSize: CatalogPosterSize,
-    val catalogPosterLayout: CatalogPosterLayout,
-    val homeCatalogRowCount: Int,
     val preferences: Map<String, HomeCatalogPreference>,
 )
-
-enum class CatalogPosterSize {
-    Compact,
-    Regular,
-    Large,
-}
-
-enum class CatalogPosterLayout {
-    Portrait,
-    Landscape,
-}
 
 @Serializable
 private data class StoredHomeCatalogPreference(
@@ -117,15 +88,8 @@ private data class StoredHomeCatalogPreference(
 @Serializable
 private data class StoredHomeCatalogSettingsPayload(
     val heroEnabled: Boolean = true,
-    val heroAutoScrollEnabled: Boolean = true,
-    val heroMotionPreviewEnabled: Boolean = false,
     val showCatalogType: Boolean = true,
     val hideUnreleasedContent: Boolean = false,
-    val hideCatalogUnderline: Boolean = false,
-    val catalogColumnCount: Int = 3,
-    val catalogPosterSize: CatalogPosterSize = CatalogPosterSize.Regular,
-    val catalogPosterLayout: CatalogPosterLayout = CatalogPosterLayout.Portrait,
-    val homeCatalogRowCount: Int = 1,
     val items: List<StoredHomeCatalogPreference> = emptyList(),
 )
 
@@ -140,36 +104,42 @@ object HomeCatalogSettingsRepository {
     private val _uiState = MutableStateFlow(HomeCatalogSettingsUiState())
     val uiState: StateFlow<HomeCatalogSettingsUiState> = _uiState.asStateFlow()
 
+    private val emptySnapshot = HomeCatalogSettingsSnapshot(
+        heroEnabled = true,
+        showCatalogType = true,
+        hideUnreleasedContent = false,
+        preferences = emptyMap(),
+    )
+    private val snapshotRef = atomic(emptySnapshot)
+    private val syncMutex = Mutex()
     private var hasLoaded = false
+    private var lastPersistedPayload: String? = null
     private var definitions: List<HomeCatalogDefinition> = emptyList()
     private var collectionDefinitions: List<CollectionCatalogDefinition> = emptyList()
-    private var preferences: MutableMap<String, StoredHomeCatalogPreference> = mutableMapOf()
+    private var lastCatalogSync: CatalogSyncInput? = null
+    private var lastCollectionSync: Pair<List<Collection>, String>? = null
+    private val preferencesRef = atomic<Map<String, StoredHomeCatalogPreference>>(emptyMap())
+    private var preferences: Map<String, StoredHomeCatalogPreference>
+        get() = preferencesRef.value
+        set(value) {
+            preferencesRef.value = value
+        }
     private var heroEnabled = true
-    private var heroAutoScrollEnabled = true
-    private var heroMotionPreviewEnabled = false
     private var showCatalogType = true
     private var hideUnreleasedContent = false
-    private var hideCatalogUnderline = false
-    private var catalogColumnCount = 3
-    private var catalogPosterSize = CatalogPosterSize.Regular
-    private var catalogPosterLayout = CatalogPosterLayout.Portrait
-    private var homeCatalogRowCount = 1
 
     fun onProfileChanged() {
         hasLoaded = false
-        preferences.clear()
+        preferences = emptyMap()
         heroEnabled = true
-        heroAutoScrollEnabled = true
-        heroMotionPreviewEnabled = false
         showCatalogType = true
         hideUnreleasedContent = false
-        hideCatalogUnderline = false
-        catalogColumnCount = 3
-        catalogPosterSize = CatalogPosterSize.Regular
-        catalogPosterLayout = CatalogPosterLayout.Portrait
-        homeCatalogRowCount = 1
         definitions = emptyList()
         collectionDefinitions = emptyList()
+        snapshotRef.value = emptySnapshot
+        lastPersistedPayload = null
+        lastCatalogSync = null
+        lastCollectionSync = null
         _uiState.value = HomeCatalogSettingsUiState()
     }
 
@@ -177,24 +147,34 @@ object HomeCatalogSettingsRepository {
         hasLoaded = false
         definitions = emptyList()
         collectionDefinitions = emptyList()
-        preferences.clear()
+        lastCatalogSync = null
+        lastCollectionSync = null
+        preferences = emptyMap()
         heroEnabled = true
-        heroAutoScrollEnabled = true
-        heroMotionPreviewEnabled = false
         showCatalogType = true
         hideUnreleasedContent = false
-        hideCatalogUnderline = false
-        catalogColumnCount = 3
-        catalogPosterSize = CatalogPosterSize.Regular
-        catalogPosterLayout = CatalogPosterLayout.Portrait
-        homeCatalogRowCount = 1
+        snapshotRef.value = emptySnapshot
+        lastPersistedPayload = null
         _uiState.value = HomeCatalogSettingsUiState()
     }
 
-    fun syncCatalogs(addons: List<ManagedAddon>) {
+    suspend fun syncCatalogs(addons: List<ManagedAddon>) = withContext(Dispatchers.Default) {
+        syncMutex.withLock {
+            syncCatalogsInternal(addons)
+        }
+    }
+
+    private fun syncCatalogsInternal(addons: List<ManagedAddon>) {
         ensureLoaded()
+        val collections = CollectionRepository.collections.value
+        val syncInput = CatalogSyncInput(addons, collections, Locale.current.toLanguageTag(), ServerRepository.uiState.value.revision)
+        if (lastCatalogSync == syncInput) return
         definitions = buildHomeCatalogDefinitions(addons)
-        collectionDefinitions = buildCollectionDefinitions(CollectionRepository.collections.value)
+        collectionDefinitions = buildCollectionDefinitions(collections)
+        lastCatalogSync = syncInput
+        lastCollectionSync = lastCollectionSync?.takeIf {
+            it.first == collections && it.second == syncInput.locale
+        }
         if (definitions.isEmpty() && collectionDefinitions.isEmpty()) {
             publish()
             return
@@ -205,9 +185,28 @@ object HomeCatalogSettingsRepository {
         persist()
     }
 
-    fun syncCollections(collections: List<Collection>) {
+    suspend fun syncCollections(
+        collections: List<Collection>,
+        addons: List<ManagedAddon> = AddonRepository.uiState.value.addons.enabledAddons(),
+    ) = withContext(Dispatchers.Default) {
+        syncMutex.withLock {
+            syncCollectionsInternal(collections = collections, addons = addons)
+        }
+    }
+
+    private fun syncCollectionsInternal(
+        collections: List<Collection>,
+        addons: List<ManagedAddon>,
+    ) {
         ensureLoaded()
+        val syncInput = collections to Locale.current.toLanguageTag()
+        if (lastCollectionSync == syncInput) return
+        if (definitions.isEmpty()) definitions = buildHomeCatalogDefinitions(addons)
         collectionDefinitions = buildCollectionDefinitions(collections)
+        lastCatalogSync = lastCatalogSync?.takeIf {
+            it.collections == collections && it.locale == syncInput.second
+        }
+        lastCollectionSync = syncInput
         normalizePreferences()
         enforcePinnedCollectionsAtTop()
         publish()
@@ -217,50 +216,16 @@ object HomeCatalogSettingsRepository {
 
     internal fun snapshot(): HomeCatalogSettingsSnapshot {
         ensureLoaded()
-        return HomeCatalogSettingsSnapshot(
-            heroEnabled = heroEnabled,
-            heroAutoScrollEnabled = heroAutoScrollEnabled,
-            heroMotionPreviewEnabled = heroMotionPreviewEnabled,
-            showCatalogType = showCatalogType,
-            hideUnreleasedContent = hideUnreleasedContent,
-            hideCatalogUnderline = hideCatalogUnderline,
-            catalogColumnCount = catalogColumnCount,
-            catalogPosterSize = catalogPosterSize,
-            catalogPosterLayout = catalogPosterLayout,
-            homeCatalogRowCount = homeCatalogRowCount,
-            preferences = preferences.mapValues { (_, value) ->
-                HomeCatalogPreference(
-                    customTitle = value.customTitle,
-                    enabled = value.enabled,
-                    heroSourceEnabled = value.heroSourceEnabled,
-                    order = value.order,
-                )
-            },
-        )
+        return snapshotRef.value
     }
 
     fun setHeroEnabled(enabled: Boolean) {
         ensureLoaded()
+        if (heroEnabled == enabled) return
         heroEnabled = enabled
         publish()
         persist()
         HomeRepository.applyCurrentSettings()
-    }
-
-    fun setHeroAutoScrollEnabled(enabled: Boolean) {
-        ensureLoaded()
-        if (heroAutoScrollEnabled == enabled) return
-        heroAutoScrollEnabled = enabled
-        publish()
-        persist()
-    }
-
-    fun setHeroMotionPreviewEnabled(enabled: Boolean) {
-        ensureLoaded()
-        if (heroMotionPreviewEnabled == enabled) return
-        heroMotionPreviewEnabled = enabled
-        publish()
-        persist()
     }
 
     fun setShowCatalogType(enabled: Boolean) {
@@ -280,53 +245,6 @@ object HomeCatalogSettingsRepository {
         publish()
         persist()
         HomeRepository.applyCurrentSettings()
-        HomeCatalogSettingsSyncService.triggerPush()
-    }
-
-    fun setHideCatalogUnderline(enabled: Boolean) {
-        ensureLoaded()
-        if (hideCatalogUnderline == enabled) return
-        hideCatalogUnderline = enabled
-        publish()
-        persist()
-        HomeCatalogSettingsSyncService.triggerPush()
-    }
-
-    fun setCatalogColumnCount(count: Int) {
-        ensureLoaded()
-        val next = count.coerceIn(2, 6)
-        if (catalogColumnCount == next) return
-        catalogColumnCount = next
-        publish()
-        persist()
-        HomeCatalogSettingsSyncService.triggerPush()
-    }
-
-    fun setCatalogPosterSize(size: CatalogPosterSize) {
-        ensureLoaded()
-        if (catalogPosterSize == size) return
-        catalogPosterSize = size
-        publish()
-        persist()
-        HomeCatalogSettingsSyncService.triggerPush()
-    }
-
-    fun setCatalogPosterLayout(layout: CatalogPosterLayout) {
-        ensureLoaded()
-        if (catalogPosterLayout == layout) return
-        catalogPosterLayout = layout
-        publish()
-        persist()
-        HomeCatalogSettingsSyncService.triggerPush()
-    }
-
-    fun setHomeCatalogRowCount(count: Int) {
-        ensureLoaded()
-        val next = count.coerceIn(1, 4)
-        if (homeCatalogRowCount == next) return
-        homeCatalogRowCount = next
-        publish()
-        persist()
         HomeCatalogSettingsSyncService.triggerPush()
     }
 
@@ -357,16 +275,9 @@ object HomeCatalogSettingsRepository {
     fun resetToDefaults() {
         ensureLoaded()
         heroEnabled = true
-        heroAutoScrollEnabled = true
-        heroMotionPreviewEnabled = false
         showCatalogType = true
         hideUnreleasedContent = false
-        hideCatalogUnderline = false
-        catalogColumnCount = 3
-        catalogPosterSize = CatalogPosterSize.Regular
-        catalogPosterLayout = CatalogPosterLayout.Portrait
-        homeCatalogRowCount = 1
-        preferences.clear()
+        preferences = emptyMap()
         normalizePreferences()
         publish()
         persist()
@@ -390,10 +301,12 @@ object HomeCatalogSettingsRepository {
         if (fromIndex == toIndex) return
         val orderedKeys = allKeys.toMutableList()
         orderedKeys.add(toIndex, orderedKeys.removeAt(fromIndex))
+        val updatedPreferences = preferences.toMutableMap()
         orderedKeys.forEachIndexed { index, itemKey ->
-            val current = preferences[itemKey] ?: return@forEachIndexed
-            preferences[itemKey] = current.copy(order = index)
+            val current = updatedPreferences[itemKey] ?: return@forEachIndexed
+            updatedPreferences[itemKey] = current.copy(order = index)
         }
+        preferences = updatedPreferences
         publish()
         persist()
         HomeRepository.applyCurrentSettings()
@@ -412,17 +325,11 @@ object HomeCatalogSettingsRepository {
         }.getOrNull()
 
         if (parsedPayload != null) {
+            lastPersistedPayload = payload
             heroEnabled = parsedPayload.heroEnabled
-            heroAutoScrollEnabled = parsedPayload.heroAutoScrollEnabled
-            heroMotionPreviewEnabled = parsedPayload.heroMotionPreviewEnabled
             showCatalogType = parsedPayload.showCatalogType
             hideUnreleasedContent = parsedPayload.hideUnreleasedContent
-            hideCatalogUnderline = parsedPayload.hideCatalogUnderline
-            catalogColumnCount = parsedPayload.catalogColumnCount.coerceIn(2, 6)
-            catalogPosterSize = parsedPayload.catalogPosterSize
-            catalogPosterLayout = parsedPayload.catalogPosterLayout
-            homeCatalogRowCount = parsedPayload.homeCatalogRowCount.coerceIn(1, 4)
-            preferences = parsedPayload.items.associateBy { it.key }.toMutableMap()
+            preferences = parsedPayload.items.associateBy { it.key }
             publish()
             return
         }
@@ -431,7 +338,7 @@ object HomeCatalogSettingsRepository {
             json.decodeFromString<List<StoredHomeCatalogPreference>>(payload)
         }.getOrDefault(emptyList())
 
-        preferences = legacyItems.associateBy { it.key }.toMutableMap()
+        preferences = legacyItems.associateBy { it.key }
         publish()
     }
 
@@ -480,11 +387,23 @@ object HomeCatalogSettingsRepository {
                 order = stored?.order ?: nextOrder++,
             )
         }
-        preferences = normalized
+        preferences = normalized.toMap()
     }
 
     private fun publish() {
-        val collectionMap = collectionDefinitions.associateBy { it.key }
+        snapshotRef.value = HomeCatalogSettingsSnapshot(
+            heroEnabled = heroEnabled,
+            showCatalogType = showCatalogType,
+            hideUnreleasedContent = hideUnreleasedContent,
+            preferences = preferences.mapValues { (_, value) ->
+                HomeCatalogPreference(
+                    customTitle = value.customTitle,
+                    enabled = value.enabled,
+                    heroSourceEnabled = value.heroSourceEnabled,
+                    order = value.order,
+                )
+            },
+        )
         val catalogItems = definitions
             .map { definition ->
                 val preference = preferences[definition.key]
@@ -518,39 +437,27 @@ object HomeCatalogSettingsRepository {
         val items = (catalogItems + collectionItems)
             .sortedBy { it.order }
 
-        _uiState.value = HomeCatalogSettingsUiState(
+        val nextState = HomeCatalogSettingsUiState(
             heroEnabled = heroEnabled,
-            heroAutoScrollEnabled = heroAutoScrollEnabled,
-            heroMotionPreviewEnabled = heroMotionPreviewEnabled,
             showCatalogType = showCatalogType,
             hideUnreleasedContent = hideUnreleasedContent,
-            hideCatalogUnderline = hideCatalogUnderline,
-            catalogColumnCount = catalogColumnCount,
-            catalogPosterSize = catalogPosterSize,
-            catalogPosterLayout = catalogPosterLayout,
-            homeCatalogRowCount = homeCatalogRowCount,
             items = items,
         )
+        if (_uiState.value != nextState) _uiState.value = nextState
     }
 
     private fun persist() {
-        HomeCatalogSettingsStorage.savePayload(
-            json.encodeToString(
-                StoredHomeCatalogSettingsPayload(
-                    heroEnabled = heroEnabled,
-                    heroAutoScrollEnabled = heroAutoScrollEnabled,
-                    heroMotionPreviewEnabled = heroMotionPreviewEnabled,
-                    showCatalogType = showCatalogType,
-                    hideUnreleasedContent = hideUnreleasedContent,
-                    hideCatalogUnderline = hideCatalogUnderline,
-                    catalogColumnCount = catalogColumnCount,
-                    catalogPosterSize = catalogPosterSize,
-                    catalogPosterLayout = catalogPosterLayout,
-                    homeCatalogRowCount = homeCatalogRowCount,
-                    items = preferences.values.sortedBy { it.order },
-                ),
+        val payload = json.encodeToString(
+            StoredHomeCatalogSettingsPayload(
+                heroEnabled = heroEnabled,
+                showCatalogType = showCatalogType,
+                hideUnreleasedContent = hideUnreleasedContent,
+                items = preferences.values.sortedBy { it.order },
             ),
         )
+        if (payload == lastPersistedPayload) return
+        HomeCatalogSettingsStorage.savePayload(payload)
+        lastPersistedPayload = payload
     }
 
     private fun updatePreference(
@@ -562,7 +469,7 @@ object HomeCatalogSettingsRepository {
         val current = preferences[key] ?: defaultPreferenceForMissingKey(key) ?: return
         val updated = transform(current)
         if (updated == current) return
-        preferences[key] = updated
+        preferences = preferences + (key to updated)
         publish()
         persist()
         HomeRepository.applyCurrentSettings()
@@ -595,10 +502,12 @@ object HomeCatalogSettingsRepository {
         val movingKey = orderedKeys.removeAt(currentIndex)
         orderedKeys.add(targetIndex, movingKey)
 
+        val updatedPreferences = preferences.toMutableMap()
         orderedKeys.forEachIndexed { index, itemKey ->
-            val current = preferences[itemKey] ?: return@forEachIndexed
-            preferences[itemKey] = current.copy(order = index)
+            val current = updatedPreferences[itemKey] ?: return@forEachIndexed
+            updatedPreferences[itemKey] = current.copy(order = index)
         }
+        preferences = updatedPreferences
 
         publish()
         persist()
@@ -610,7 +519,7 @@ object HomeCatalogSettingsRepository {
         ensureLoaded()
         val catalogDefinitionsByKey = definitions.associateBy { it.key }
         val collectionDefinitionsByKey = collectionDefinitions.associateBy { it.key }
-        val items = preferences.values.sortedBy { it.order }.map { pref ->
+        val items = preferences.values.filterNot { ServerCatalog.isServerKey(it.key) }.sortedBy { it.order }.map { pref ->
             val catalogDefinition = catalogDefinitionsByKey[pref.key]
             val collectionDefinition = collectionDefinitionsByKey[pref.key]
             val isCollection = collectionDefinition != null || pref.key.startsWith("collection_")
@@ -641,28 +550,16 @@ object HomeCatalogSettingsRepository {
             }
         }
         return SyncHomeCatalogPayload(
-            heroAutoScrollEnabled = heroAutoScrollEnabled,
             showCatalogType = showCatalogType,
             hideUnreleasedContent = hideUnreleasedContent,
-            hideCatalogUnderline = hideCatalogUnderline,
-            catalogColumnCount = catalogColumnCount,
-            catalogPosterSize = catalogPosterSize,
-            catalogPosterLayout = catalogPosterLayout,
-            homeCatalogRowCount = homeCatalogRowCount,
             items = items,
         )
     }
 
     fun applyFromRemote(payload: SyncHomeCatalogPayload) {
         ensureLoaded()
-        heroAutoScrollEnabled = payload.heroAutoScrollEnabled
         showCatalogType = payload.showCatalogType
         hideUnreleasedContent = payload.hideUnreleasedContent
-        hideCatalogUnderline = payload.hideCatalogUnderline
-        catalogColumnCount = payload.catalogColumnCount.coerceIn(2, 6)
-        catalogPosterSize = payload.catalogPosterSize
-        catalogPosterLayout = payload.catalogPosterLayout
-        homeCatalogRowCount = payload.homeCatalogRowCount.coerceIn(1, 4)
         if (payload.items.isNotEmpty()) {
             val existingHeroState = preferences.mapValues { it.value.heroSourceEnabled }
             val remotePreferences = payload.items.associate { item ->
@@ -680,7 +577,7 @@ object HomeCatalogSettingsRepository {
             val preservedPreferences = preferences.filterKeys { key ->
                 key !in remoteKeys && (key in knownKeys || key.requiresExplicitSyncKey())
             }
-            preferences = (preservedPreferences + remotePreferences).toMutableMap()
+            preferences = preservedPreferences + remotePreferences
             normalizePreferences()
         }
         hasLoaded = true
@@ -714,10 +611,12 @@ object HomeCatalogSettingsRepository {
         val reorderedKeys = pinnedKeys + nonPinnedKeys
         if (reorderedKeys == orderedKeys) return
 
+        val updatedPreferences = preferences.toMutableMap()
         reorderedKeys.forEachIndexed { index, itemKey ->
-            val current = preferences[itemKey] ?: return@forEachIndexed
-            preferences[itemKey] = current.copy(order = index)
+            val current = updatedPreferences[itemKey] ?: return@forEachIndexed
+            updatedPreferences[itemKey] = current.copy(order = index)
         }
+        preferences = updatedPreferences
     }
 
     private fun defaultPreferenceForMissingKey(key: String): StoredHomeCatalogPreference? {
@@ -766,8 +665,13 @@ internal data class CollectionCatalogDefinition(
     val isPinnedToTop: Boolean,
 )
 
+internal fun visibleCollectionsWithUniqueIds(collections: List<Collection>): List<Collection> =
+    collections
+        .filter { collection -> collection.folders.isNotEmpty() }
+        .distinctBy(Collection::id)
+
 internal fun buildCollectionDefinitions(collections: List<Collection>): List<CollectionCatalogDefinition> =
-    collections.filter { it.folders.isNotEmpty() }.map { collection ->
+    visibleCollectionsWithUniqueIds(collections).map { collection ->
         CollectionCatalogDefinition(
             key = "collection_${collection.id}",
             collectionId = collection.id,
@@ -776,3 +680,10 @@ internal fun buildCollectionDefinitions(collections: List<Collection>): List<Col
             isPinnedToTop = collection.pinToTop,
         )
     }
+
+private data class CatalogSyncInput(
+    val addons: List<ManagedAddon>,
+    val collections: List<Collection>,
+    val locale: String,
+    val serverRevision: Int,
+)

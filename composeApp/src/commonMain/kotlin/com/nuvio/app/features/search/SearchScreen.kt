@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,8 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.network.NetworkCondition
@@ -46,7 +49,9 @@ import com.nuvio.app.core.ui.NuvioScreen
 import com.nuvio.app.core.ui.NuvioNetworkOfflineCard
 import com.nuvio.app.core.ui.NuvioScreenHeader
 import com.nuvio.app.core.ui.nuvioConsumePointerEvents
+import com.nuvio.app.core.ui.rememberPosterCardStyleUiState
 import com.nuvio.app.core.ui.withDuplicateSafeLazyKeys
+import com.nuvio.app.core.ui.ScreenActivityEffect
 import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.firstEnabledManifestError
 import com.nuvio.app.features.addons.hasPendingEnabledManifests
@@ -57,7 +62,9 @@ import com.nuvio.app.features.home.components.HomeCatalogRowSection
 import com.nuvio.app.features.home.components.HomeEmptyStateCard
 import com.nuvio.app.features.home.components.homeSectionHorizontalPaddingForWidth
 import com.nuvio.app.features.home.components.HomeSkeletonRow
+import com.nuvio.app.core.ui.posterGridColumnCountForCatalogWidth
 import com.nuvio.app.features.home.components.posterGridColumnCountForWidth
+import com.nuvio.app.isDesktop
 import com.nuvio.app.features.watched.WatchedRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -68,12 +75,12 @@ import kotlinx.coroutines.flow.map
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.action_retry
 import nuvio.composeapp.generated.resources.compose_nav_search
+import nuvio.composeapp.generated.resources.home_empty_no_sources_title
+import nuvio.composeapp.generated.resources.search_empty_no_sources_message
 import nuvio.composeapp.generated.resources.compose_search_clear
 import nuvio.composeapp.generated.resources.compose_search_discover_title
 import nuvio.composeapp.generated.resources.compose_search_empty_failed_message
 import nuvio.composeapp.generated.resources.compose_search_empty_failed_title
-import nuvio.composeapp.generated.resources.compose_search_empty_no_active_addons_message
-import nuvio.composeapp.generated.resources.compose_search_empty_no_active_addons_title
 import nuvio.composeapp.generated.resources.compose_search_empty_no_results_message
 import nuvio.composeapp.generated.resources.compose_search_empty_no_results_title
 import nuvio.composeapp.generated.resources.compose_search_empty_no_search_catalogs_message
@@ -86,6 +93,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun SearchScreen(
     modifier: Modifier = Modifier,
+    topChromePadding: Dp? = null,
     listState: LazyListState = rememberLazyListState(),
     onPosterClick: ((MetaPreview) -> Unit)? = null,
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
@@ -93,9 +101,18 @@ fun SearchScreen(
     scrollToTopRequests: Flow<Unit> = emptyFlow(),
 ) {
     val focusRequester = remember { FocusRequester() }
+    var isSearchFocused by remember { mutableStateOf(false) }
 
-    LaunchedEffect(searchFocusRequestCount) {
-        if (searchFocusRequestCount > 0) {
+    ScreenActivityEffect(listState) { screenActive ->
+        if (!screenActive) {
+            isSearchFocused = false
+            focusRequester.freeFocus()
+            listState.stopScroll()
+        }
+    }
+
+    ScreenActivityEffect(searchFocusRequestCount) { screenActive ->
+        if (screenActive && searchFocusRequestCount > 0) {
             focusRequester.requestFocus()
         }
     }
@@ -126,7 +143,8 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(scrollToTopRequests) {
+    ScreenActivityEffect(scrollToTopRequests) { screenActive ->
+        if (!screenActive) return@ScreenActivityEffect
         scrollToTopRequests.collect {
             listState.animateScrollToItem(0)
         }
@@ -137,11 +155,13 @@ fun SearchScreen(
     }
     val addonManifestsLoading = addonsUiState.addons.hasPendingEnabledManifests()
 
-    LaunchedEffect(addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent) {
+    ScreenActivityEffect(addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent) { screenActive ->
+        if (!screenActive) return@ScreenActivityEffect
         SearchRepository.refreshDiscover(addonsUiState.addons)
     }
 
-    LaunchedEffect(query, addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent) {
+    ScreenActivityEffect(query, addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent) { screenActive ->
+        if (!screenActive) return@ScreenActivityEffect
         val normalizedQuery = query.trim()
         if (normalizedQuery.isBlank()) {
             lastRequestedQuery = null
@@ -156,8 +176,8 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(listState, query, discoverUiState.canLoadMore, discoverUiState.isLoading) {
-        if (query.isNotBlank()) return@LaunchedEffect
+    ScreenActivityEffect(listState, query, discoverUiState.canLoadMore, discoverUiState.isLoading) { screenActive ->
+        if (!screenActive || query.isNotBlank()) return@ScreenActivityEffect
 
         snapshotFlow { listState.layoutInfo }
             .map { layoutInfo ->
@@ -171,15 +191,17 @@ fun SearchScreen(
             }
     }
 
-    LaunchedEffect(query, lastRequestedQuery, uiState.isLoading, uiState.sections) {
+    ScreenActivityEffect(query, lastRequestedQuery, uiState.isLoading, uiState.sections) { screenActive ->
+        if (!screenActive) return@ScreenActivityEffect
         val normalizedQuery = query.trim()
-        if (normalizedQuery.isBlank()) return@LaunchedEffect
-        if (lastRequestedQuery != normalizedQuery) return@LaunchedEffect
-        if (uiState.isLoading || uiState.sections.isEmpty()) return@LaunchedEffect
+        if (normalizedQuery.isBlank()) return@ScreenActivityEffect
+        if (lastRequestedQuery != normalizedQuery) return@ScreenActivityEffect
+        if (uiState.isLoading || uiState.sections.isEmpty()) return@ScreenActivityEffect
         SearchHistoryRepository.recordSearch(normalizedQuery)
     }
 
-    LaunchedEffect(networkStatusUiState.condition, query, addonRefreshKey) {
+    ScreenActivityEffect(networkStatusUiState.condition, query, addonRefreshKey) { screenActive ->
+        if (!screenActive) return@ScreenActivityEffect
         when (networkStatusUiState.condition) {
             NetworkCondition.NoInternet,
             NetworkCondition.ServersUnreachable,
@@ -188,7 +210,7 @@ fun SearchScreen(
             }
 
             NetworkCondition.Online -> {
-                if (!observedOfflineState) return@LaunchedEffect
+                if (!observedOfflineState) return@ScreenActivityEffect
                 observedOfflineState = false
 
                 val normalizedQuery = query.trim()
@@ -215,8 +237,16 @@ fun SearchScreen(
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
     ) {
-        val discoverColumns = remember(maxWidth) {
-            posterGridColumnCountForWidth(maxWidth)
+        val posterCardStyle = rememberPosterCardStyleUiState()
+        val discoverColumns = remember(maxWidth, maxHeight, posterCardStyle.widthDp, isDesktop) {
+            if (isDesktop) {
+                posterGridColumnCountForCatalogWidth(
+                    screenWidth = maxWidth,
+                    basePosterWidthDp = posterCardStyle.widthDp,
+                )
+            } else {
+                posterGridColumnCountForWidth(maxWidth)
+            }
         }
         val homeSectionPadding = remember(maxWidth) {
             homeSectionHorizontalPaddingForWidth(maxWidth.value)
@@ -229,6 +259,7 @@ fun SearchScreen(
 
         NuvioScreen(
             horizontalPadding = 0.dp,
+            topPadding = if (topChromePadding != null) 0.dp else null,
             listState = listState,
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -246,14 +277,23 @@ fun SearchScreen(
                     NuvioScreenHeader(
                         title = headerTitle,
                         modifier = Modifier.padding(horizontal = 16.dp),
+                        topPadding = topChromePadding,
                     )
                     androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(6.dp))
                     androidx.compose.foundation.layout.Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                         NuvioInputField(
                             value = query,
-                            onValueChange = { query = it },
+                            onValueChange = {
+                                focusRequester.captureFocus()
+                                query = it
+                            },
                             placeholder = stringResource(Res.string.compose_search_placeholder),
-                            modifier = Modifier.focusRequester(focusRequester),
+                            modifier = Modifier
+                                .focusRequester(focusRequester)
+                                .onFocusChanged {
+                                    isSearchFocused = it.isFocused
+                                    if (query.isNotBlank()) focusRequester.captureFocus()
+                                },
                             trailingContent = if (query.isNotBlank()) {
                                 {
                                     IconButton(onClick = { query = "" }) {
@@ -275,7 +315,8 @@ fun SearchScreen(
         }
 
         if (query.isBlank()) {
-            if (recentSearches.isNotEmpty()) {
+            if (isSearchFocused && recentSearches.isNotEmpty()) {
+                focusRequester.captureFocus()
                 item(key = "recent_searches") {
                     SearchRecentSection(
                         recentSearches = recentSearches,
@@ -315,7 +356,7 @@ fun SearchScreen(
                     isWaitingForSearch -> {
                         items(2) {
                             HomeSkeletonRow(
-                                modifier = Modifier.padding(horizontal = homeSectionPadding),
+                                horizontalPadding = homeSectionPadding,
                             )
                         }
                     }
@@ -323,7 +364,7 @@ fun SearchScreen(
                     (uiState.isLoading || addonManifestsLoading) && uiState.sections.isEmpty() -> {
                         items(2) {
                             HomeSkeletonRow(
-                                modifier = Modifier.padding(horizontal = homeSectionPadding),
+                                horizontalPadding = homeSectionPadding,
                             )
                         }
                     }
@@ -371,7 +412,7 @@ fun SearchScreen(
                         if (uiState.isLoading) {
                             item(key = "search_loading_more") {
                                 HomeSkeletonRow(
-                                    modifier = Modifier.padding(horizontal = homeSectionPadding),
+                                    horizontalPadding = homeSectionPadding,
                                 )
                             }
                         }
@@ -407,8 +448,8 @@ private fun SearchEmptyStateCard(
 
     when (reason) {
         SearchEmptyStateReason.NoActiveAddons -> {
-            title = stringResource(Res.string.compose_search_empty_no_active_addons_title)
-            message = stringResource(Res.string.compose_search_empty_no_active_addons_message)
+            title = stringResource(Res.string.home_empty_no_sources_title)
+            message = stringResource(Res.string.search_empty_no_sources_message)
         }
 
         SearchEmptyStateReason.NoSearchCatalogs -> {

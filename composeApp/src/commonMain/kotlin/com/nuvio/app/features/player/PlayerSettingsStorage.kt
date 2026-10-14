@@ -29,14 +29,6 @@ internal expect object PlayerSettingsStorage {
     fun saveKeyboardSeekStepSeconds(seconds: Int)
     fun loadTouchGesturesEnabled(): Boolean?
     fun saveTouchGesturesEnabled(enabled: Boolean)
-    fun loadRememberPlayerBrightnessEnabled(): Boolean?
-    fun saveRememberPlayerBrightnessEnabled(enabled: Boolean)
-    fun loadRememberPlayerChoicesEnabled(): Boolean?
-    fun saveRememberPlayerChoicesEnabled(enabled: Boolean)
-    fun loadRememberedPlayerBrightness(): Float?
-    fun saveRememberedPlayerBrightness(level: Float)
-    fun loadVolumeBoostPercent(): Int?
-    fun saveVolumeBoostPercent(percent: Int)
     fun loadExternalPlayerEnabled(): Boolean?
     fun saveExternalPlayerEnabled(enabled: Boolean)
     fun loadExternalPlayerForwardSubtitles(): Boolean?
@@ -67,22 +59,14 @@ internal expect object PlayerSettingsStorage {
     fun saveSubtitleBold(enabled: Boolean)
     fun loadSubtitleFontSizeSp(): Int?
     fun saveSubtitleFontSizeSp(fontSizeSp: Int)
-    fun loadSubtitleFontFamily(): String?
-    fun saveSubtitleFontFamily(fontFamily: String)
-    fun loadSubtitleCustomFontName(): String?
-    fun saveSubtitleCustomFontName(fontName: String?)
-    fun loadSubtitleCustomFontPath(): String?
-    fun saveSubtitleCustomFontPath(fontPath: String?)
     fun loadSubtitleBottomOffset(): Int?
     fun saveSubtitleBottomOffset(bottomOffset: Int)
+    fun loadSubtitleStripSdh(): Boolean?
+    fun saveSubtitleStripSdh(enabled: Boolean)
     fun loadSubtitleUseForcedSubtitles(): Boolean?
     fun saveSubtitleUseForcedSubtitles(enabled: Boolean)
     fun loadSubtitleShowOnlyPreferredLanguages(): Boolean?
     fun saveSubtitleShowOnlyPreferredLanguages(enabled: Boolean)
-    fun loadSubtitleStripSdh(): Boolean?
-    fun saveSubtitleStripSdh(enabled: Boolean)
-    fun loadAddonSubtitleStartupMode(): String?
-    fun saveAddonSubtitleStartupMode(mode: String)
     fun loadStreamReuseLastLinkEnabled(): Boolean?
     fun saveStreamReuseLastLinkEnabled(enabled: Boolean)
     fun loadStreamReuseLastLinkCacheHours(): Int?
@@ -95,8 +79,6 @@ internal expect object PlayerSettingsStorage {
     fun saveAndroidLibmpvHardwareDecodingEnabled(enabled: Boolean)
     fun loadAndroidLibmpvYuv420pEnabled(): Boolean?
     fun saveAndroidLibmpvYuv420pEnabled(enabled: Boolean)
-    fun loadAndroidMemorySafeBufferEnabled(): Boolean?
-    fun saveAndroidMemorySafeBufferEnabled(enabled: Boolean)
     fun loadDecoderPriority(): Int?
     fun saveDecoderPriority(priority: Int)
     fun loadMapDV7ToHevc(): Boolean?

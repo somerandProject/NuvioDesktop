@@ -141,10 +141,6 @@ actual fun PlatformPlayerSurface(
                 bridge.setMuted(muted)
             }
 
-            override fun setVolumeBoost(multiplier: Float) {
-                bridge.setVolumeBoost(multiplier.coerceIn(0f, 2f))
-            }
-
             override fun getAudioTracks(): List<AudioTrack> {
                 val count = bridge.getAudioTrackCount()
                 return (0 until count).map { i ->
@@ -286,9 +282,8 @@ actual fun PlatformPlayerSurface(
                     outlineSize = if (style.outlineEnabled) style.outlineWidth.toFloat() else 0f,
                     bold = style.bold,
                     fontSize = style.toMpvSubtitleFontSize(),
-                    fontFamily = style.toIosMpvSubtitleFont(),
-                    fontDirectory = style.customFontDirectory(),
                     subPos = style.toMpvSubtitlePosition(),
+                    stripSdh = style.stripSdh,
                 )
             }
         }
@@ -347,8 +342,6 @@ actual fun PlatformPlayerSurface(
                 positionMs = bridge.getPositionMs(),
                 bufferedPositionMs = bridge.getBufferedMs(),
                 playbackSpeed = bridge.getPlaybackSpeed(),
-                videoWidth = bridge.getVideoWidth().takeIf { it > 0 },
-                videoHeight = bridge.getVideoHeight().takeIf { it > 0 },
             )
             latestOnSnapshot.value(snapshot)
             val errorMessage = bridge.getErrorMessage().ifBlank { null }
@@ -461,30 +454,7 @@ private fun SubtitleStyleState.toMpvSubtitlePosition(): Int =
     (100 - (bottomOffset / 2)).coerceIn(0, 150)
 
 private fun SubtitleStyleState.toMpvSubtitleFontSize(): Float =
-    (fontSizeSp * 3f).coerceIn(24f, 96f)
-
-private fun SubtitleFontFamily.toIosMpvSubtitleFont(): String =
-    when (this) {
-        SubtitleFontFamily.System -> "Helvetica Neue"
-        SubtitleFontFamily.SansSerif -> "Helvetica Neue"
-        SubtitleFontFamily.Serif -> "Times New Roman"
-        SubtitleFontFamily.Monospace -> "Menlo"
-        SubtitleFontFamily.Rounded -> "Arial Rounded MT Bold"
-        SubtitleFontFamily.Custom -> "Helvetica Neue"
-    }
-
-private fun SubtitleStyleState.toIosMpvSubtitleFont(): String =
-    if (fontFamily == SubtitleFontFamily.Custom) {
-        customFontName?.takeIf { it.isNotBlank() } ?: "Helvetica Neue"
-    } else {
-        fontFamily.toIosMpvSubtitleFont()
-    }
-
-private fun SubtitleStyleState.customFontDirectory(): String? =
-    customFontPath
-        ?.takeIf { fontFamily == SubtitleFontFamily.Custom && it.isNotBlank() }
-        ?.substringBeforeLast('/', missingDelimiterValue = "")
-        ?.takeIf { it.isNotBlank() }
+    (fontSizeSp * 3f).coerceIn(18f, 96f)
 
 private fun Int.toHexByte(): String {
     val digits = "0123456789ABCDEF"

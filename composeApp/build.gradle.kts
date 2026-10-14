@@ -66,18 +66,6 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
     @get:Input
     abstract val tmdbApiKey: Property<String>
 
-    @get:Input
-    abstract val realtimeSyncEnabled: Property<Boolean>
-
-    @get:Input
-    abstract val gifSearchProvider: Property<String>
-
-    @get:Input
-    abstract val gifSearchApiKey: Property<String>
-
-    @get:Input
-    abstract val gifSearchEndpoint: Property<String>
-
     @TaskAction
     fun generate() {
         val props = Properties()
@@ -136,21 +124,7 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
                 |object TraktConfig {
                 |    const val CLIENT_ID = "${props.getProperty("TRAKT_CLIENT_ID", "")}" 
                 |    const val CLIENT_SECRET = "${props.getProperty("TRAKT_CLIENT_SECRET", "")}" 
-                |    const val REDIRECT_URI = "${props.getProperty("TRAKT_REDIRECT_URI", "nuvioenhanced://auth/trakt")}"
-                |}
-                """.trimMargin()
-            )
-        }
-
-        outDir.resolve("com/nuvio/app/features/telegram").apply {
-            mkdirs()
-            resolve("TelegramConfig.kt").writeText(
-                """
-                |package com.nuvio.app.features.telegram
-                |
-                |object TelegramConfig {
-                |    const val API_ID = ${props.getProperty("TELEGRAM_API_ID", "0").toIntOrNull() ?: 0}
-                |    const val API_HASH = "${props.getProperty("TELEGRAM_API_HASH", "")}"
+                |    const val REDIRECT_URI = "${props.getProperty("TRAKT_REDIRECT_URI", "nuvio://auth/trakt")}" 
                 |}
                 """.trimMargin()
             )
@@ -164,8 +138,8 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
                 |
                 |object SimklConfig {
                 |    const val CLIENT_ID = "${props.getProperty("SIMKL_CLIENT_ID", "")}"
-                |    const val APP_NAME = "${props.getProperty("SIMKL_APP_NAME", "NuvioMobile")}"
-                |    const val REDIRECT_URI = "${props.getProperty("SIMKL_REDIRECT_URI", "nuvioenhanced://auth/simkl")}"
+                |    const val REDIRECT_URI = "${props.getProperty("SIMKL_REDIRECT_URI", "nuvio://auth/simkl")}"
+                |    const val APP_NAME = "${props.getProperty("SIMKL_APP_NAME", "nuvio")}"
                 |}
                 """.trimMargin()
             )
@@ -196,11 +170,6 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
                 """.trimMargin()
             )
         }
-        val introDbApiUrl = props.getProperty("INTRODB_API_URL")
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?.replace("http://api.introdb.app", "https://api.introdb.app")
-            ?: "https://api.introdb.app"
 
         outDir.resolve("com/nuvio/app/features/player/skip").apply {
             mkdirs()
@@ -209,7 +178,7 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
                 |package com.nuvio.app.features.player.skip
                 |
                 |object IntroDbConfig {
-                |    const val URL = "$introDbApiUrl"
+                |    const val URL = "${props.getProperty("INTRODB_API_URL", "https://api.introdb.app")}" 
                 |}
                 """.trimMargin()
             )
@@ -237,21 +206,6 @@ abstract class GenerateRuntimeConfigsTask : DefaultTask() {
                 |
                 |object PremiumizeConfig {
                 |    const val CLIENT_ID = "${props.getProperty("PREMIUMIZE_CLIENT_ID", "")}"
-                |}
-                """.trimMargin()
-            )
-        }
-
-        outDir.resolve("com/nuvio/app/features/profiles").apply {
-            mkdirs()
-            resolve("GifSearchConfig.kt").writeText(
-                """
-                |package com.nuvio.app.features.profiles
-                |
-                |object GifSearchConfig {
-                |    const val PROVIDER = "${gifSearchProvider.get()}"
-                |    const val API_KEY = "${gifSearchApiKey.get()}"
-                |    const val SEARCH_ENDPOINT = "${gifSearchEndpoint.get()}"
                 |}
                 """.trimMargin()
             )
@@ -557,7 +511,7 @@ val iosDistribution = (
     providers.gradleProperty("nuvio.ios.distribution").orNull
         ?: System.getenv("NUVIO_IOS_DISTRIBUTION")
         ?: supabaseProps.getProperty("NUVIO_IOS_DISTRIBUTION")
-        ?: "full"
+        ?: "appstore"
     ).trim().lowercase()
 require(iosDistribution == "appstore" || iosDistribution == "full") {
     "NUVIO_IOS_DISTRIBUTION must be 'appstore' or 'full'."
@@ -617,17 +571,10 @@ val runtimeLocalProperties = Properties().apply {
     }
 }
 
-fun runtimeConfigValue(vararg keys: String, fallback: String = ""): String =
-    keys.asSequence()
-        .mapNotNull { key ->
-            runtimeLocalProperties.getProperty(key)?.trim()?.takeIf { it.isNotBlank() }
-                ?: providers.environmentVariable(key).orNull?.trim()?.takeIf { it.isNotBlank() }
-        }
-        .firstOrNull()
+fun runtimeConfigValue(key: String, fallback: String = ""): String =
+    runtimeLocalProperties.getProperty(key)?.trim()?.takeIf { it.isNotBlank() }
+        ?: providers.environmentVariable(key).orNull?.trim()?.takeIf { it.isNotBlank() }
         ?: fallback
-
-val publicNuvioApiUrl = "https://api.nuvio.tv"
-val publicNuvioApiKey = "sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN"
 
 fun runtimeConfigBoolean(key: String, default: Boolean): Boolean =
     when (runtimeConfigValue(key).lowercase()) {
@@ -676,27 +623,6 @@ val generateRuntimeConfigs = tasks.register<GenerateRuntimeConfigsTask>("generat
             else -> "production"
         }
     )
-    realtimeSyncEnabled.set(runtimeConfigBoolean("NUVIO_REALTIME_SYNC_ENABLED", true))
-    val configuredGifSearchEndpoint = runtimeConfigValue("NUVIO_GIF_SEARCH_ENDPOINT", "GIF_SEARCH_ENDPOINT")
-    val configuredGifSearchApiKey = runtimeConfigValue(
-        "NUVIO_GIF_SEARCH_API_KEY",
-        "GIF_SEARCH_API_KEY",
-        "NUVIO_GIPHY_API_KEY",
-        "GIPHY_API_KEY",
-        "NUVIO_TENOR_API_KEY",
-        "TENOR_API_KEY",
-    )
-    gifSearchProvider.set(
-        runtimeConfigValue("NUVIO_GIF_SEARCH_PROVIDER", "GIF_SEARCH_PROVIDER").ifBlank {
-            when {
-                configuredGifSearchEndpoint.isNotBlank() -> "proxy"
-                configuredGifSearchApiKey.isNotBlank() -> "giphy"
-                else -> "duckduckgo"
-            }
-        }
-    )
-    gifSearchApiKey.set(configuredGifSearchApiKey)
-    gifSearchEndpoint.set(configuredGifSearchEndpoint)
 }
 
 val isMacHost = System.getProperty("os.name").contains("mac", ignoreCase = true)
@@ -1178,27 +1104,20 @@ kotlin {
             "ios-arm64_x86_64-simulator"
         }
         val nuvioEngineSliceDirectory = nuvioEngineAppleFramework.resolve(nuvioEngineSlice)
-        val hasNuvioEngineSlice = nuvioEngineSliceDirectory.resolve("libCNuvioEngine.a").isFile
-        val useNuvioEngine = iosDistribution == "full" && hasNuvioEngineSlice
         iosTarget.compilations.getByName("main") {
             cinterops {
                 create("commoncrypto") {
                     defFile(project.file("src/nativeInterop/cinterop/commoncrypto.def"))
                     compilerOpts("-I${project.projectDir}/src/nativeInterop/cinterop")
                 }
-                create("iospowersource") {
-                    defFile(project.file("src/nativeInterop/cinterop/iospowersource.def"))
+                create("appicon") {
+                    defFile(project.file("src/nativeInterop/cinterop/appicon.def"))
                     compilerOpts("-I${project.projectDir}/src/nativeInterop/cinterop")
                 }
-                create("iosappicon") {
-                    defFile(project.file("src/nativeInterop/cinterop/iosappicon.def"))
-                    compilerOpts("-I${project.projectDir}/src/nativeInterop/cinterop")
-                }
-                create("iostelegram") {
-                    defFile(project.file("src/nativeInterop/cinterop/iostelegram.def"))
-                    compilerOpts("-I${project.projectDir}/src/nativeInterop/cinterop")
-                }
-                if (useNuvioEngine) {
+                if (iosDistribution == "full") {
+                    check(nuvioEngineSliceDirectory.resolve("libCNuvioEngine.a").isFile) {
+                        "Build the local Nuvio Engine Apple XCFramework before compiling iOS Full."
+                    }
                     create("nuvioengine") {
                         defFile(project.file("src/nativeInterop/cinterop/nuvioengine.def"))
                         compilerOpts("-I${nuvioEngineSliceDirectory.resolve("Headers").absolutePath}")
@@ -1212,10 +1131,6 @@ kotlin {
 
             if (iosDistribution == "full") {
                 defaultSourceSet.kotlin.srcDir(fullCommonSourceDir)
-                if (!useNuvioEngine) {
-                    defaultSourceSet.kotlin.exclude("**/P2pStreamingEngine.ios.kt")
-                    defaultSourceSet.kotlin.srcDir(project.file("src/iosNoEngine/kotlin"))
-                }
             }
             defaultSourceSet.kotlin.srcDir(project.file(iosDistributionSourceDir))
             defaultSourceSet.dependencies {
@@ -1231,10 +1146,6 @@ kotlin {
             baseName = "ComposeApp"
             isStatic = true
             freeCompilerArgs += listOf("-Xbinary=bundleId=$iosFrameworkBundleId")
-            if (iosDistribution == "full" && buildType.name == "RELEASE") {
-                optimized = false
-                freeCompilerArgs += "-Xdisable-phases=DevirtualizationAnalysis,RemoveRedundantCallsToStaticInitializersPhase"
-            }
             if (iosDistribution == "full") {
                 linkerOpts(
                     "-lc++",
@@ -1273,7 +1184,6 @@ kotlin {
                 implementation(libs.coil.gif)
                 implementation("androidx.recyclerview:recyclerview:1.4.0")
                 implementation("com.squareup.okhttp3:okhttp:4.12.0")
-                implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
                 implementation("com.google.code.gson:gson:2.11.0")
                 implementation("io.github.peerless2012:ass-media:0.5.1")
                 implementation(libs.ktor.client.okhttp)
@@ -1296,21 +1206,6 @@ kotlin {
                 implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("lib-*.aar"))))
                 if (androidDistribution == "full") {
                     implementation(files("libs/quickjs-kt-android-1.0.5-nuvio.aar"))
-                    implementation(files("libs/cloudstream-runtime-api-4.8.0-3496e5f.aar"))
-                    implementation("androidx.annotation:annotation:1.10.0")
-                    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
-                    implementation("org.jsoup:jsoup:1.22.1")
-                    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.8.0")
-                    implementation("com.github.Blatzar:NiceHttp:0.4.18")
-                    implementation("me.xdrop:fuzzywuzzy:1.4.0")
-                    implementation("org.mozilla:rhino:1.8.1")
-                    implementation("com.uwetrottmann.tmdb2:tmdb-java:2.13.0")
-                    implementation("dev.whyoleg.cryptography:cryptography-core:0.6.0")
-                    implementation("dev.whyoleg.cryptography:cryptography-provider-optimal:0.6.0")
-                    implementation("com.github.teamnewpipe:NewPipeExtractor:v0.26.3") {
-                        exclude(group = "org.mozilla", module = "rhino-engine")
-                    }
-                    implementation(kotlin("reflect"))
                     implementation(libs.ksoup)
                 }
             }
@@ -1383,7 +1278,6 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.atomicfu)
             implementation(libs.kmpalette.core)
-            implementation(libs.androidx.navigation.compose)
             implementation(libs.androidx.navigation3.ui)
             implementation(libs.kermit)
             implementation(libs.supabase.postgrest)

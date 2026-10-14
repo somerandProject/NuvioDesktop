@@ -39,6 +39,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -71,6 +72,7 @@ fun NextEpisodeCard(
     isAutoPlaySearching: Boolean,
     autoPlaySourceName: String?,
     autoPlayCountdownSec: Int?,
+    blurred: Boolean,
     onPlayNext: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -153,7 +155,9 @@ fun NextEpisodeCard(
                 AsyncImage(
                     model = nextEpisode.thumbnail,
                     contentDescription = stringResource(Res.string.player_next_episode_thumbnail),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (blurred) Modifier.blur(18.dp) else Modifier),
                     contentScale = ContentScale.Crop,
                 )
                 Box(

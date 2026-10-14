@@ -1,8 +1,8 @@
 package com.nuvio.app.features.home.components
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -14,46 +14,34 @@ import coil3.compose.AsyncImage
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.darwin.Darwin
-import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.reinterpret
-import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import platform.CoreFoundation.CFDataCreate
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.reinterpret
 import platform.CoreGraphics.CGImageRef
-import platform.CoreGraphics.CGImageRelease
+import platform.CoreFoundation.CFDataCreate
+import platform.CoreFoundation.CFRelease
 import platform.ImageIO.CGImageSourceCreateImageAtIndex
 import platform.ImageIO.CGImageSourceCreateWithData
 import platform.ImageIO.CGImageSourceGetCount
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageView
 import platform.UIKit.UIViewContentMode
+import platform.CoreGraphics.CGImageRelease
+import kotlinx.cinterop.usePinned
 
-private val animatedGifHttpClient = HttpClient(Darwin) {
-    install(HttpTimeout) {
-        requestTimeoutMillis = 15_000
-        connectTimeoutMillis = 10_000
-        socketTimeoutMillis = 15_000
-    }
-}
-private val animatedGifDecodeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-private const val MaxCachedAnimatedGifs = 10
-private const val MaxAnimatedGifBytes = 20 * 1024 * 1024
+private val gifHttpClient = HttpClient(Darwin)
+private val gifDecodeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+private const val MaxCachedGifImages = 12
 private const val DefaultGifFrameDelayCentiseconds = 10
-private val animatedGifCache = mutableMapOf<String, AnimatedGif>()
-private val animatedGifCacheOrder = mutableListOf<String>()
-private val animatedGifInFlight = mutableMapOf<String, Deferred<AnimatedGif?>>()
-
-private data class AnimatedGif(
-    val images: List<UIImage>,
-    val durationSeconds: Double,
-)
+private val gifImageCache = mutableMapOf<String, UIImage>()
+private val gifImageCacheOrder = mutableListOf<String>()
+private val gifImageInFlight = mutableMapOf<String, Deferred<UIImage?>>()
 
 private data class GifFrame(
     val image: UIImage,
@@ -65,16 +53,13 @@ private data class ExpandedGifFrames(
     val tickCentiseconds: Int,
 )
 
-private class AnimatedGifImageViewHolder {
+private class GifImageViewHolder {
     var imageView: UIImageView? = null
-    var currentGif: AnimatedGif? = null
 
     fun clear() {
         imageView?.stopAnimating()
-        imageView?.animationImages = null
         imageView?.image = null
         imageView = null
-        currentGif = null
     }
 }
 
@@ -82,6 +67,7 @@ private class AnimatedGifImageViewHolder {
 @Composable
 internal actual fun CollectionCardRemoteImage(
     imageUrl: String,
+    staticImageUrl: String?,
     contentDescription: String,
     modifier: Modifier,
     contentScale: ContentScale,
@@ -97,30 +83,13 @@ internal actual fun CollectionCardRemoteImage(
         return
     }
 
-    var animatedGif by remember(imageUrl) { mutableStateOf(cachedAnimatedGif(imageUrl)) }
-    var loadFailed by remember(imageUrl) { mutableStateOf(false) }
+    var gifImage by remember(imageUrl) { mutableStateOf(cachedGifImage(imageUrl)) }
 
     LaunchedEffect(imageUrl) {
-        loadFailed = false
-        animatedGif = cachedAnimatedGif(imageUrl)
-        if (animatedGif == null) {
-            animatedGif = loadAnimatedGif(imageUrl)
-            loadFailed = animatedGif == null
-        }
+        gifImage = loadGifImage(imageUrl)
     }
 
-    val gif = animatedGif
-    if (gif == null || loadFailed) {
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = contentDescription,
-            modifier = modifier,
-            contentScale = contentScale,
-        )
-        return
-    }
-
-    val imageViewHolder = remember(imageUrl) { AnimatedGifImageViewHolder() }
+    val imageViewHolder = remember(imageUrl) { GifImageViewHolder() }
     DisposableEffect(imageUrl) {
         onDispose {
             imageViewHolder.clear()
@@ -129,132 +98,148 @@ internal actual fun CollectionCardRemoteImage(
 
     UIKitView(
         modifier = modifier,
-        interactive = false,
         factory = {
             UIImageView().apply {
+                contentMode = UIViewContentMode.UIViewContentModeScaleAspectFill
                 clipsToBounds = true
                 userInteractionEnabled = false
+                tag = imageUrl.hashCode().toLong()
                 imageViewHolder.imageView = this
-                updateContentMode(contentScale)
-                updateAnimatedGif(gif, imageViewHolder)
+                updateGifImage(gifImage)
             }
         },
         update = { imageView ->
             imageViewHolder.imageView = imageView
-            imageView.updateContentMode(contentScale)
-            imageView.updateAnimatedGif(gif, imageViewHolder)
+            if (imageView.tag != imageUrl.hashCode().toLong()) {
+                imageView.tag = imageUrl.hashCode().toLong()
+            }
+            imageView.updateGifImage(gifImage)
         },
     )
 }
 
-private fun UIImageView.updateContentMode(contentScale: ContentScale) {
-    contentMode = when (contentScale) {
-        ContentScale.Crop -> UIViewContentMode.UIViewContentModeScaleAspectFill
-        ContentScale.FillBounds -> UIViewContentMode.UIViewContentModeScaleToFill
-        ContentScale.Fit,
-        ContentScale.Inside -> UIViewContentMode.UIViewContentModeScaleAspectFit
-        else -> UIViewContentMode.UIViewContentModeScaleAspectFill
-    }
-}
-
-private fun UIImageView.updateAnimatedGif(gif: AnimatedGif, holder: AnimatedGifImageViewHolder) {
-    if (holder.currentGif !== gif) {
+private fun UIImageView.updateGifImage(image: UIImage?) {
+    if (this.image != image) {
         stopAnimating()
-        animationImages = gif.images
-        animationDuration = gif.durationSeconds.coerceAtLeast(0.02)
-        animationRepeatCount = 0
-        image = gif.images.firstOrNull()
-        holder.currentGif = gif
+        this.image = image
     }
-    startAnimating()
+    if (image != null) {
+        startAnimating()
+    }
 }
 
-private fun cachedAnimatedGif(imageUrl: String): AnimatedGif? {
-    val gif = animatedGifCache[imageUrl] ?: return null
-    animatedGifCacheOrder.remove(imageUrl)
-    animatedGifCacheOrder.add(imageUrl)
-    return gif
+private fun cachedGifImage(imageUrl: String): UIImage? {
+    val image = gifImageCache[imageUrl] ?: return null
+    gifImageCacheOrder.remove(imageUrl)
+    gifImageCacheOrder.add(imageUrl)
+    return image
 }
 
-private fun storeAnimatedGif(imageUrl: String, gif: AnimatedGif) {
-    animatedGifCache[imageUrl] = gif
-    animatedGifCacheOrder.remove(imageUrl)
-    animatedGifCacheOrder.add(imageUrl)
+private fun storeGifImage(imageUrl: String, image: UIImage) {
+    gifImageCache[imageUrl] = image
+    gifImageCacheOrder.remove(imageUrl)
+    gifImageCacheOrder.add(imageUrl)
 
-    while (animatedGifCacheOrder.size > MaxCachedAnimatedGifs) {
-        val eldestKey = animatedGifCacheOrder.removeAt(0)
-        animatedGifCache.remove(eldestKey)
+    while (gifImageCacheOrder.size > MaxCachedGifImages) {
+        val eldestKey = gifImageCacheOrder.removeFirstOrNull() ?: break
+        gifImageCache.remove(eldestKey)
     }
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private suspend fun loadAnimatedGif(imageUrl: String): AnimatedGif? {
-    cachedAnimatedGif(imageUrl)?.let { return it }
+private suspend fun loadGifImage(imageUrl: String): UIImage? {
+    cachedGifImage(imageUrl)?.let { return it }
 
-    val request = animatedGifInFlight[imageUrl] ?: animatedGifDecodeScope.async {
+    val request = gifImageInFlight[imageUrl] ?: gifDecodeScope.async {
         runCatching {
-            val bytes = animatedGifHttpClient.get(imageUrl).body<ByteArray>()
-            if (bytes.isEmpty() || bytes.size > MaxAnimatedGifBytes || !bytes.hasGifHeader()) {
-                return@runCatching null
-            }
-            decodeAnimatedGif(bytes)
+            val bytes = gifHttpClient.get(imageUrl).body<ByteArray>()
+            bytes
+                .takeIf { it.isNotEmpty() }
+                ?.let { gifBytes ->
+                    UIImage.gifImageWithBytes(
+                        bytes = gifBytes,
+                        frameDurations = parseGifFrameDurations(gifBytes),
+                    )
+                }
         }.getOrNull()
-    }.also { animatedGifInFlight[imageUrl] = it }
+    }.also { gifImageInFlight[imageUrl] = it }
 
-    val gif = try {
+    val image = try {
         request.await()
     } finally {
-        if (animatedGifInFlight[imageUrl] === request) {
-            animatedGifInFlight.remove(imageUrl)
+        if (gifImageInFlight[imageUrl] === request) {
+            gifImageInFlight.remove(imageUrl)
         }
     }
 
-    if (gif != null) {
-        storeAnimatedGif(imageUrl, gif)
+    if (image != null) {
+        storeGifImage(imageUrl, image)
     }
 
-    return gif
+    return image
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun decodeAnimatedGif(bytes: ByteArray): AnimatedGif? {
-    val data = bytes.toCFData() ?: return null
-    val source = CGImageSourceCreateWithData(data, null) ?: return null
-    val frameCount = CGImageSourceGetCount(source).toInt()
-    if (frameCount <= 1) return null
-
-    val frameDurations = parseGifFrameDurations(bytes)
-    val frames = mutableListOf<GifFrame>()
-
-    for (index in 0 until frameCount) {
-        val imageRef: CGImageRef = CGImageSourceCreateImageAtIndex(source, index.toULong(), null) ?: continue
-        try {
-            frames += GifFrame(
-                image = UIImage.imageWithCGImage(imageRef),
-                delayCentiseconds = frameDurations.getOrNull(index)
-                    ?.coerceAtLeast(2)
-                    ?: DefaultGifFrameDelayCentiseconds,
-            )
-        } finally {
-            CGImageRelease(imageRef)
-        }
+private fun ByteArray.toCFData() =
+    usePinned { pinned ->
+        CFDataCreate(
+            allocator = null,
+            bytes = pinned.addressOf(0).reinterpret(),
+            length = size.toLong(),
+        )
     }
-    if (frames.size <= 1) return null
 
-    val expanded = expandedGifFrames(frames)
-    return AnimatedGif(
-        images = expanded.images,
-        durationSeconds = (expanded.images.size * expanded.tickCentiseconds) / 100.0,
-    )
+@OptIn(ExperimentalForeignApi::class)
+private fun UIImage.Companion.gifImageWithBytes(
+    bytes: ByteArray,
+    frameDurations: List<Int>,
+): UIImage? {
+    return runCatching {
+        val data = bytes.toCFData() ?: return null
+        try {
+            val source = CGImageSourceCreateWithData(data, null) ?: return null
+            try {
+                val count = CGImageSourceGetCount(source).toInt()
+                val frames = mutableListOf<GifFrame>()
+
+                for (index in 0 until count) {
+                    val imageRef: CGImageRef = CGImageSourceCreateImageAtIndex(source, index.toULong(), null) ?: continue
+                    try {
+                        frames.add(
+                            GifFrame(
+                                image = UIImage.imageWithCGImage(imageRef),
+                                delayCentiseconds = frameDurations.getOrNull(index)
+                                    ?.coerceAtLeast(1)
+                                    ?: DefaultGifFrameDelayCentiseconds,
+                            )
+                        )
+                    } finally {
+                        CGImageRelease(imageRef)
+                    }
+                }
+
+                if (frames.isEmpty()) return null
+
+                val expanded = expandedGifFrames(frames)
+                val durationSeconds = (expanded.images.size * expanded.tickCentiseconds) / 100.0
+                UIImage.animatedImageWithImages(expanded.images, durationSeconds)
+            } finally {
+                CFRelease(source)
+            }
+        } finally {
+            CFRelease(data)
+        }
+    }.getOrNull()
 }
 
 private fun expandedGifFrames(frames: List<GifFrame>): ExpandedGifFrames {
-    val normalizedDelays = frames.map { it.delayCentiseconds.coerceAtLeast(2) }
+    val normalizedDelays = frames.map { it.delayCentiseconds.coerceAtLeast(1) }
     val tickCentiseconds = normalizedDelays.reduce(::greatestCommonDivisor)
-    val expandedFrames = ArrayList<UIImage>(normalizedDelays.sumOf { it / tickCentiseconds })
+    val expandedSize = normalizedDelays.sumOf { it / tickCentiseconds }
+    val expandedFrames = ArrayList<UIImage>(expandedSize)
 
     frames.forEach { frame ->
-        val repeatCount = (frame.delayCentiseconds.coerceAtLeast(2) / tickCentiseconds).coerceAtLeast(1)
+        val repeatCount = (frame.delayCentiseconds.coerceAtLeast(1) / tickCentiseconds).coerceAtLeast(1)
         repeat(repeatCount) {
             expandedFrames.add(frame.image)
         }
@@ -264,6 +249,17 @@ private fun expandedGifFrames(frames: List<GifFrame>): ExpandedGifFrames {
         images = expandedFrames,
         tickCentiseconds = tickCentiseconds,
     )
+}
+
+private fun greatestCommonDivisor(a: Int, b: Int): Int {
+    var x = a
+    var y = b
+    while (y != 0) {
+        val temp = x % y
+        x = y
+        y = temp
+    }
+    return x.coerceAtLeast(1)
 }
 
 private fun parseGifFrameDurations(bytes: ByteArray): List<Int> {
@@ -290,11 +286,11 @@ private fun parseGifFrameDurations(bytes: ByteArray): List<Int> {
                 val extensionLabel = bytes[index + 1].unsignedInt()
                 if (extensionLabel == 0xF9) {
                     if (index + 7 >= bytes.size) break
-                    val delayCentiseconds = bytes.readUnsignedShort(index + 4)
-                    pendingDelayCentiseconds = if (delayCentiseconds <= 1) {
+                    val delayHundredths = bytes.readUnsignedShort(index + 4)
+                    pendingDelayCentiseconds = if (delayHundredths <= 0) {
                         DefaultGifFrameDelayCentiseconds
                     } else {
-                        delayCentiseconds
+                        delayHundredths
                     }
                     index += 8
                 } else {
@@ -328,27 +324,6 @@ private fun parseGifFrameDurations(bytes: ByteArray): List<Int> {
 
     return frameDurations
 }
-
-private fun greatestCommonDivisor(a: Int, b: Int): Int {
-    var x = a
-    var y = b
-    while (y != 0) {
-        val temp = x % y
-        x = y
-        y = temp
-    }
-    return x.coerceAtLeast(1)
-}
-
-@OptIn(ExperimentalForeignApi::class)
-private fun ByteArray.toCFData() =
-    usePinned { pinned ->
-        CFDataCreate(
-            allocator = null,
-            bytes = pinned.addressOf(0).reinterpret(),
-            length = size.toLong(),
-        )
-    }
 
 private fun ByteArray.hasGifHeader(): Boolean =
     size >= 6 &&

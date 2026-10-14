@@ -22,22 +22,18 @@ internal fun resolveDesktopAppLocale(
 
 internal actual object ThemeSettingsStorage {
     private const val selectedThemeKey = "selected_theme"
-    private const val customThemeFirstColorKey = "custom_theme_first_color"
-    private const val customThemeSecondColorKey = "custom_theme_second_color"
+    private const val customThemeColorsKey = "custom_theme_colors"
     private const val amoledEnabledKey = "amoled_enabled"
     private const val liquidGlassNativeTabBarEnabledKey = "liquid_glass_native_tab_bar_enabled"
-    private const val liquidGlassAutoHideOnScrollEnabledKey = "liquid_glass_auto_hide_on_scroll_enabled"
     private const val desktopNavigationLayoutKey = "desktop_navigation_layout"
     private const val selectedAppLanguageKey = "selected_app_language"
     private const val navBarStyleKey = "nav_bar_style"
     private const val navBarGlowEnabledKey = "nav_bar_glow_enabled"
     private val profileScopedSyncKeys = listOf(
         selectedThemeKey,
-        customThemeFirstColorKey,
-        customThemeSecondColorKey,
+        customThemeColorsKey,
         amoledEnabledKey,
         liquidGlassNativeTabBarEnabledKey,
-        liquidGlassAutoHideOnScrollEnabledKey,
         desktopNavigationLayoutKey,
         navBarStyleKey,
         navBarGlowEnabledKey,
@@ -52,18 +48,11 @@ internal actual object ThemeSettingsStorage {
         store.putString(ProfileScopedKey.of(selectedThemeKey), themeName)
     }
 
-    actual fun loadCustomThemeFirstColor(): String? =
-        store.getString(ProfileScopedKey.of(customThemeFirstColorKey))
+    actual fun loadCustomThemeColors(): String? =
+        store.getString(ProfileScopedKey.of(customThemeColorsKey))
 
-    actual fun saveCustomThemeFirstColor(colorName: String) {
-        store.putString(ProfileScopedKey.of(customThemeFirstColorKey), colorName)
-    }
-
-    actual fun loadCustomThemeSecondColor(): String? =
-        store.getString(ProfileScopedKey.of(customThemeSecondColorKey))
-
-    actual fun saveCustomThemeSecondColor(colorName: String) {
-        store.putString(ProfileScopedKey.of(customThemeSecondColorKey), colorName)
+    actual fun saveCustomThemeColors(colors: String) {
+        store.putString(ProfileScopedKey.of(customThemeColorsKey), colors)
     }
 
     actual fun loadAmoledEnabled(): Boolean? =
@@ -80,17 +69,10 @@ internal actual object ThemeSettingsStorage {
         store.putBoolean(ProfileScopedKey.of(liquidGlassNativeTabBarEnabledKey), enabled)
     }
 
-    actual fun loadLiquidGlassAutoHideOnScrollEnabled(): Boolean? =
-        store.getBoolean(ProfileScopedKey.of(liquidGlassAutoHideOnScrollEnabledKey))
-
-    actual fun saveLiquidGlassAutoHideOnScrollEnabled(enabled: Boolean) {
-        store.putBoolean(ProfileScopedKey.of(liquidGlassAutoHideOnScrollEnabledKey), enabled)
-    }
-
-    fun loadDesktopNavigationLayout(): String? =
+    actual fun loadDesktopNavigationLayout(): String? =
         store.getString(ProfileScopedKey.of(desktopNavigationLayoutKey))
 
-    fun saveDesktopNavigationLayout(layoutName: String) {
+    actual fun saveDesktopNavigationLayout(layoutName: String) {
         store.putString(ProfileScopedKey.of(desktopNavigationLayoutKey), layoutName)
     }
 
@@ -113,20 +95,18 @@ internal actual object ThemeSettingsStorage {
         store.putString(ProfileScopedKey.of(navBarStyleKey), styleKey)
     }
 
-    fun loadNavBarGlowEnabled(): Boolean? =
+    actual fun loadNavBarGlowEnabled(): Boolean? =
         store.getBoolean(ProfileScopedKey.of(navBarGlowEnabledKey))
 
-    fun saveNavBarGlowEnabled(enabled: Boolean) {
+    actual fun saveNavBarGlowEnabled(enabled: Boolean) {
         store.putBoolean(ProfileScopedKey.of(navBarGlowEnabledKey), enabled)
     }
 
     actual fun exportToSyncPayload(): JsonObject = buildJsonObject {
         loadSelectedTheme()?.let { put(selectedThemeKey, encodeSyncString(it)) }
-        loadCustomThemeFirstColor()?.let { put(customThemeFirstColorKey, encodeSyncString(it)) }
-        loadCustomThemeSecondColor()?.let { put(customThemeSecondColorKey, encodeSyncString(it)) }
+        loadCustomThemeColors()?.let { put(customThemeColorsKey, encodeSyncString(it)) }
         loadAmoledEnabled()?.let { put(amoledEnabledKey, encodeSyncBoolean(it)) }
         loadLiquidGlassNativeTabBarEnabled()?.let { put(liquidGlassNativeTabBarEnabledKey, encodeSyncBoolean(it)) }
-        loadLiquidGlassAutoHideOnScrollEnabled()?.let { put(liquidGlassAutoHideOnScrollEnabledKey, encodeSyncBoolean(it)) }
         loadDesktopNavigationLayout()?.let { put(desktopNavigationLayoutKey, encodeSyncString(it)) }
         loadNavBarStyle()?.let { put(navBarStyleKey, encodeSyncString(it)) }
         loadNavBarGlowEnabled()?.let { put(navBarGlowEnabledKey, encodeSyncBoolean(it)) }
@@ -135,11 +115,9 @@ internal actual object ThemeSettingsStorage {
     actual fun replaceFromSyncPayload(payload: JsonObject) {
         store.removeAll(profileScopedSyncKeys.map(ProfileScopedKey::of))
         payload.decodeSyncString(selectedThemeKey)?.let(::saveSelectedTheme)
-        payload.decodeSyncString(customThemeFirstColorKey)?.let(::saveCustomThemeFirstColor)
-        payload.decodeSyncString(customThemeSecondColorKey)?.let(::saveCustomThemeSecondColor)
+        payload.decodeSyncString(customThemeColorsKey)?.let(::saveCustomThemeColors)
         payload.decodeSyncBoolean(amoledEnabledKey)?.let(::saveAmoledEnabled)
         payload.decodeSyncBoolean(liquidGlassNativeTabBarEnabledKey)?.let(::saveLiquidGlassNativeTabBarEnabled)
-        payload.decodeSyncBoolean(liquidGlassAutoHideOnScrollEnabledKey)?.let(::saveLiquidGlassAutoHideOnScrollEnabled)
         payload.decodeSyncString(desktopNavigationLayoutKey)?.let(::saveDesktopNavigationLayout)
         payload.decodeSyncString(navBarStyleKey)?.let(::saveNavBarStyle)
         payload.decodeSyncBoolean(navBarGlowEnabledKey)?.let(::saveNavBarGlowEnabled)
