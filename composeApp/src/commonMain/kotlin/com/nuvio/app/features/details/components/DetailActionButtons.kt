@@ -4,7 +4,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,7 +18,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -31,8 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -43,10 +45,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.ui.AppIconResource
 import com.nuvio.app.core.ui.appIconPainter
-import com.nuvio.app.core.ui.rememberAnimatedAccentBrush
+import com.nuvio.app.core.ui.secondaryClick
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.action_play
 import nuvio.composeapp.generated.resources.details_actions_menu_label
+import nuvio.composeapp.generated.resources.hero_add_to_library
+import nuvio.composeapp.generated.resources.hero_mark_unwatched
+import nuvio.composeapp.generated.resources.hero_mark_watched
+import nuvio.composeapp.generated.resources.hero_remove_from_library
+import nuvio.composeapp.generated.resources.playback_unavailable
+import nuvio.composeapp.generated.resources.random_episode_title
+import nuvio.composeapp.generated.resources.shuffle_stop
 import org.jetbrains.compose.resources.stringResource
 
 data class DetailSecondaryAction(
@@ -62,7 +71,8 @@ data class DetailSecondaryAction(
 fun DetailActionButtons(
     modifier: Modifier = Modifier,
     playLabel: String = stringResource(Res.string.action_play),
-    featuredAction: DetailSecondaryAction? = null,
+    playEnabled: Boolean = true,
+    pinnedAction: DetailSecondaryAction? = null,
     secondaryActions: List<DetailSecondaryAction> = emptyList(),
     actionsMenuLabel: String = stringResource(Res.string.details_actions_menu_label),
     isTablet: Boolean = false,
@@ -81,7 +91,6 @@ fun DetailActionButtons(
         label = "detail_action_menu_progress",
     )
     val hasSecondaryActions = secondaryActions.isNotEmpty()
-    val playBrush = rememberAnimatedAccentBrush()
 
     Box(
         modifier = modifier
@@ -99,29 +108,23 @@ fun DetailActionButtons(
             Surface(
                 modifier = Modifier
                     .weight(1f)
-                    .height(buttonHeight)
-                    .clip(playShape)
-                    .then(
-                        if (playBrush != null) {
-                            Modifier.background(playBrush, playShape)
-                        } else {
-                            Modifier
-                        },
-                    ),
+                    .height(buttonHeight),
                 shape = playShape,
-                color = if (playBrush != null) Color.Transparent else MaterialTheme.colorScheme.onBackground,
-                contentColor = if (playBrush != null) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.background,
+                color = if (playEnabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = if (playEnabled) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .combinedClickable(
+                            enabled = playEnabled,
                             onClick = {
                                 onPlayClick()
                             },
                             onLongClick = onPlayLongClick,
                             role = Role.Button,
                         )
+                        .secondaryClick(onPlayLongClick)
                         .height(buttonHeight),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
@@ -145,21 +148,17 @@ fun DetailActionButtons(
                 }
             }
 
-            featuredAction?.let { action ->
+            if (pinnedAction != null) {
                 Spacer(modifier = Modifier.width(12.dp))
-                DetailCompactAction(
-                    label = action.label,
-                    icon = action.icon,
+                DetailIconAction(
+                    label = pinnedAction.label,
+                    icon = pinnedAction.icon,
+                    active = pinnedAction.isActive,
+                    progress = 1f,
                     size = iconButtonSize,
                     onClick = {
                         hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                        action.onClick()
-                    },
-                    onLongClick = action.onLongClick?.let { longClick ->
-                        {
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                            longClick()
-                        }
+                        pinnedAction.onClick()
                     },
                 )
             }
@@ -206,17 +205,15 @@ fun DetailActionButtons(
 
             if (hasSecondaryActions) {
                 Surface(
-                    modifier = Modifier
-                        .size(iconButtonSize)
-                        .clip(CircleShape),
+                    modifier = Modifier.size(iconButtonSize),
                     shape = CircleShape,
                     color = if (actionsExpanded) {
-                        MaterialTheme.colorScheme.primary
+                        MaterialTheme.colorScheme.onBackground
                     } else {
                         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f)
                     },
                     contentColor = if (actionsExpanded) {
-                        MaterialTheme.colorScheme.onPrimary
+                        MaterialTheme.colorScheme.background
                     } else {
                         MaterialTheme.colorScheme.onSurface
                     },
@@ -246,48 +243,62 @@ fun DetailActionButtons(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun DetailCompactAction(
-    label: String,
-    icon: ImageVector,
-    size: Dp,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null,
+fun DetailActions(
+    playLabel: String,
+    playEnabled: Boolean,
+    isSaved: Boolean,
+    isWatched: Boolean,
+    isTablet: Boolean,
+    shuffleEnabled: Boolean,
+    onPlayClick: () -> Unit,
+    onPlayLongClick: (() -> Unit)?,
+    onShuffleClick: (() -> Unit)?,
+    onWatchedClick: () -> Unit,
+    onSaveClick: () -> Unit,
+    onSaveLongClick: (() -> Unit)?,
 ) {
-    Surface(
-        modifier = modifier
-            .size(size)
-            .clip(CircleShape),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.primary,
-        contentColor = MaterialTheme.colorScheme.onPrimary,
-        tonalElevation = 6.dp,
-        shadowElevation = 8.dp,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(size)
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick,
-                    role = Role.Button,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                modifier = Modifier.size(20.dp),
-            )
-        }
+    val shuffleAction = onShuffleClick?.let { onClick ->
+        DetailSecondaryAction(
+            label = stringResource(if (shuffleEnabled) Res.string.shuffle_stop else Res.string.random_episode_title),
+            icon = Icons.Default.Shuffle,
+            isActive = shuffleEnabled,
+            onClick = onClick,
+        )
     }
+    DetailActionButtons(
+        playLabel = if (playEnabled) playLabel else stringResource(Res.string.playback_unavailable),
+        playEnabled = playEnabled,
+        pinnedAction = shuffleAction?.takeIf { shuffleEnabled },
+        secondaryActions = buildList {
+            if (!shuffleEnabled) shuffleAction?.let(::add)
+            add(
+                DetailSecondaryAction(
+                    label = stringResource(if (isWatched) Res.string.hero_mark_unwatched else Res.string.hero_mark_watched),
+                    icon = if (isWatched) Icons.Default.CheckCircle else Icons.Default.CheckCircleOutline,
+                    isActive = isWatched,
+                    onClick = onWatchedClick,
+                ),
+            )
+            add(
+                DetailSecondaryAction(
+                    label = stringResource(if (isSaved) Res.string.hero_remove_from_library else Res.string.hero_add_to_library),
+                    icon = if (isSaved) Icons.Default.Check else Icons.Default.Add,
+                    isActive = isSaved,
+                    onClick = onSaveClick,
+                    onLongClick = onSaveLongClick,
+                ),
+            )
+        },
+        isTablet = isTablet,
+        onPlayClick = onPlayClick,
+        onPlayLongClick = onPlayLongClick,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun DetailIconAction(
+internal fun DetailIconAction(
     label: String,
     icon: ImageVector,
     active: Boolean,
@@ -298,26 +309,23 @@ private fun DetailIconAction(
     onLongClick: (() -> Unit)? = null,
 ) {
     Surface(
-        modifier = modifier
-            .graphicsLayer {
-                alpha = progress
-                scaleX = 0.86f + (0.14f * progress)
-                scaleY = 0.86f + (0.14f * progress)
-            }
-            .clip(CircleShape),
+        modifier = modifier.graphicsLayer {
+            alpha = progress
+            scaleX = 0.86f + (0.14f * progress)
+            scaleY = 0.86f + (0.14f * progress)
+        },
         shape = CircleShape,
         color = if (active) {
-            MaterialTheme.colorScheme.primary
+            MaterialTheme.colorScheme.onBackground
         } else {
             MaterialTheme.colorScheme.surfaceVariant
         },
         contentColor = if (active) {
-            MaterialTheme.colorScheme.onPrimary
+            MaterialTheme.colorScheme.background
         } else {
             MaterialTheme.colorScheme.onSurface
         },
         tonalElevation = 6.dp,
-        shadowElevation = 8.dp,
     ) {
         Box(
             modifier = Modifier
@@ -326,7 +334,8 @@ private fun DetailIconAction(
                     onClick = onClick,
                     onLongClick = onLongClick,
                     role = Role.Button,
-                ),
+                )
+                .secondaryClick(onLongClick),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

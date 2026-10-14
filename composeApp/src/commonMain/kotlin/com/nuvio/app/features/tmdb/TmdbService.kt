@@ -18,8 +18,8 @@ object TmdbService {
     private val tmdbToImdbCache = linkedMapOf<String, String>()
     private val cacheMutex = Mutex()
 
-    suspend fun ensureTmdbId(videoId: String, mediaType: String, fallbackImdbId: String? = null): String? {
-        val apiKey = TmdbSettingsRepository.effectiveApiKey()
+    suspend fun ensureTmdbId(videoId: String, mediaType: String): String? {
+        val apiKey = currentApiKey() ?: return null
 
         val normalized = videoId
             .removePrefix("tmdb:")
@@ -31,24 +31,13 @@ object TmdbService {
 
         if (normalized.isBlank()) return null
         if (normalized.all(Char::isDigit)) return normalized
-        if (normalized.startsWith("tt", ignoreCase = true)) {
-            return imdbToTmdb(imdbId = normalized, mediaType = mediaType, apiKey = apiKey)
-        }
+        if (!normalized.startsWith("tt", ignoreCase = true)) return null
 
-        // Fallback: use the IMDB ID supplied by the addon's meta response
-        val normalizedFallback = fallbackImdbId
-            ?.trim()
-            ?.substringBefore(':')
-            ?.takeIf { it.startsWith("tt", ignoreCase = true) }
-        if (normalizedFallback != null) {
-            return imdbToTmdb(imdbId = normalizedFallback, mediaType = mediaType, apiKey = apiKey)
-        }
-
-        return null
+        return imdbToTmdb(imdbId = normalized, mediaType = mediaType, apiKey = apiKey)
     }
 
     suspend fun tmdbToImdb(tmdbId: Int, mediaType: String): String? {
-        val apiKey = TmdbSettingsRepository.effectiveApiKey()
+        val apiKey = currentApiKey() ?: return null
 
         val cacheKey = "$tmdbId:${normalizeMediaType(mediaType)}"
         cacheMutex.withLock {
@@ -165,6 +154,9 @@ object TmdbService {
             log.w { "TMDB request failed for $endpoint: ${error.message}" }
         }.getOrNull()
     }
+
+    private fun currentApiKey(): String? =
+        TmdbSettingsRepository.snapshot().apiKey.trim().takeIf(String::isNotBlank)
 
     internal fun normalizeMediaType(mediaType: String): String =
         when (mediaType.trim().lowercase()) {
