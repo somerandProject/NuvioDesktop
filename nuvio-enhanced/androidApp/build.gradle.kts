@@ -134,7 +134,17 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "../composeApp/proguard-rules.pro",
             )
-            signingConfig = signingConfigs.getByName("release")
+            // No release keystore is configured for this fork, so fall back to
+            // the Android debug signing config. The APK stays installable for
+            // sideloading; the official app must be uninstalled first because
+            // the signatures differ.
+            val hasReleaseKeystore = releaseKeystore != null && releaseStorePassword != null &&
+                releaseKeyAlias != null && releaseKeyPassword != null
+            signingConfig = if (hasReleaseKeystore || legacyUpdateCompatSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             ndk {
                 debugSymbolLevel = "FULL"
             }

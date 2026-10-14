@@ -399,36 +399,23 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "# NuvioDev ${ROLLING_VERSION}"
+            echo "## What's new in ${VERSION}"
             echo
-            echo "Personal, unofficial fork of Nuvio Desktop. All credit to Tapframe and the Nuvio contributors."
+            echo "- **Android app is now NuvioMobile-Enhanced** (version 0.4). It installs alongside the official Nuvio Enhanced app."
+            echo "- Desktop unchanged: Windows MSI, Linux AppImage and macOS builds are the same NuvioDev app as before."
             echo
-            echo "Side-by-side dev build of the Nuvio fork. **NuvioDev** installs alongside the official Nuvio app (separate app, shortcuts and menu entry)."
+            echo "### Downloads"
             echo
-            echo "## Highlights"
+            echo "- **Windows:** \`.msi\` installer (or the portable zip)"
+            echo "- **Linux:** \`.AppImage\`"
+            echo "- **Android:** sideload APK - uninstall the official Nuvio Enhanced app first if it is installed"
             echo
-            echo "- In-app updates: **Settings → About → Check for updates**, plus a seamless update banner."
-            echo "- Desktop: remembers window size/position, **always-on-top** toggle, and **minimize to tray**."
-            echo "- Player: **A-B loop**, frame step, subtitle delay nudge, and more keyboard shortcuts."
-            echo "- Skip intro/outro/recap now works out of the box (introdb default endpoint)."
-            echo "- Diagnostics: **View logs** page and a crash-reporting opt-out toggle."
-            echo "- Linux: portable **AppImage** (x86_64) for Arch and other distros; see \`packaging/arch\` for a PKGBUILD."
-            echo "- Android: sideload APKs (arm64-v8a, armeabi-v7a, x86_64, x86) built from the same codebase as the official app, with the next-episode force-close hardening. **Uninstall the official Nuvio app first** if it is installed (same app id, different signature); your data restores via Nuvio sync."
-            echo "- Fixed: updating the official Nuvio app could wipe NuvioDev's files (installer component collision). NuvioDev MSIs are now built with a jpackage that avoids it."
+            echo "### Notes"
             echo
-            echo "## Full changelog"
+            echo "- NuvioDev installs next to the official Nuvio desktop app (separate app, shortcuts and menu entry)."
+            echo "- In-app updates: **Settings -> About -> Check for updates**."
             echo
-            prev_tag="$(git tag -l | grep -E '^[0-9]+(\.[0-9]+){0,2}$' | grep -v "^${VERSION}$" | sort -V | tail -n1 || true)"
-            if [ -n "${prev_tag}" ] && git rev-parse -q --verify "refs/tags/${prev_tag}" >/dev/null; then
-              git log --pretty='- %s (%h)' "${prev_tag}..HEAD"
-            else
-              git log --pretty='- %s (%h)' -n 80
-            fi
-            echo
-            echo "## Credits"
-            echo
-            echo "- Original author: Tapframe and friends (Nuvio)"
-            echo "- NuvioDev modder: Sanjivns"
+            echo "_Unofficial personal fork. Credit to Tapframe and the Nuvio contributors._"
           } > release-notes.md
           cat release-notes.md
 
