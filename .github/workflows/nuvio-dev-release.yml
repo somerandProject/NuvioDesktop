@@ -45,9 +45,12 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       rolling_version: ${{ steps.version.outputs.rolling_version }}
       tag: ${{ steps.version.outputs.tag }}
+      desktop_changed: ${{ steps.changes.outputs.desktop_changed }}
     steps:
       - name: Check out source
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Resolve version
         id: version
         shell: bash
@@ -71,10 +74,37 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "rolling_version=${rolling_version}" >> "$GITHUB_OUTPUT"
           echo "tag=${version}" >> "$GITHUB_OUTPUT"
+      - name: Detect changed areas
+        id: changes
+        shell: bash
+        env:
+          ANDROID_ONLY_INPUT: ${{ inputs.android_only }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "${ANDROID_ONLY_INPUT}" == "true" ]]; then
+            desktop_changed=false
+          elif [[ "${EVENT_NAME}" != "push" ]]; then
+            desktop_changed=true
+          elif [[ -z "${BEFORE}" || "${BEFORE}" =~ ^0+$ ]]; then
+            desktop_changed=true
+          else
+            changed="$(git diff --name-only "${BEFORE}" HEAD || true)"
+            # Desktop-relevant unless every changed file is under nuvio-enhanced/
+            # or is a workflow/CI file.
+            desktop_changed=true
+            if [[ -n "${changed}" ]] && ! echo "${changed}" | grep -qvE '^(nuvio-enhanced/|\.github/|\.impeccable/)'; then
+              desktop_changed=false
+            fi
+          fi
+          echo "desktop_changed=${desktop_changed}" >> "$GITHUB_OUTPUT"
+          echo "desktop_changed=${desktop_changed}"
 
   tests:
     name: Unit tests
-    if: ${{ !inputs.android_only }}
+    needs: metadata
+    if: ${{ needs.metadata.outputs.desktop_changed == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -120,7 +150,7 @@ jobs:
   windows:
     name: Windows x64
     needs: metadata
-    if: ${{ !inputs.android_only }}
+    if: ${{ needs.metadata.outputs.desktop_changed == 'true' }}
     runs-on: windows-2022
     env:
       WEBVIEW2_VERSION: 1.0.4078.44
@@ -206,7 +236,7 @@ jobs:
   linux:
     name: Linux x64 AppImage
     needs: metadata
-    if: ${{ !inputs.android_only }}
+    if: ${{ needs.metadata.outputs.desktop_changed == 'true' }}
     runs-on: ubuntu-latest
     env:
       NUVIO_DESKTOP_VERSION_NAME: ${{ needs.metadata.outputs.rolling_version }}
@@ -430,8 +460,9 @@ jobs:
     if: >-
       always() &&
       needs.metadata.result == 'success' &&
-      (inputs.android_only && needs.android.result == 'success' ||
-       !inputs.android_only && needs.windows.result == 'success' && needs.tests.result == 'success')
+      needs.android.result == 'success' &&
+      (needs.windows.result == 'success' || needs.windows.result == 'skipped') &&
+      (needs.tests.result == 'success' || needs.tests.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -509,19 +540,28 @@ jobs:
       - name: Refresh rolling latest release
         env:
           ANDROID_ONLY: ${{ inputs.android_only }}
+          DESKTOP_CHANGED: ${{ needs.metadata.outputs.desktop_changed }}
         run: |
           set -euo pipefail
           # The rolling release title carries the monotonic version so the
           # in-app updater treats every Dev build as newer than the last.
-          if gh release view nuvio-dev-latest >/dev/null 2>&1; then
-            if [[ "${ANDROID_ONLY}" == "true" ]]; then
-              # Only replace the Android assets; keep the desktop ones and do not
-              # touch the title, so the desktop in-app updater is unaffected.
+          if [[ "${ANDROID_ONLY}" == "true" || "${DESKTOP_CHANGED}" != "true" ]]; then
+            # Android-only build: only replace the Android assets; keep the
+            # desktop ones and do not touch the title, so the desktop in-app
+            # updater is unaffected.
+            if gh release view nuvio-dev-latest >/dev/null 2>&1; then
               gh api "repos/${GITHUB_REPOSITORY}/releases/tags/nuvio-dev-latest" \
                 --jq '.assets[] | select(.name | test("android")).id' | while read -r id; do
                 [ -n "${id}" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" || true
               done
             else
+              gh release create nuvio-dev-latest \
+                --title "NuvioDev ${ROLLING_VERSION}" \
+                --notes-file release-notes.md \
+                --latest
+            fi
+          else
+            if gh release view nuvio-dev-latest >/dev/null 2>&1; then
               # Remove every existing asset first: older builds used different
               # filenames, so matching by new names would leave stale ones behind.
               gh api "repos/${GITHUB_REPOSITORY}/releases/tags/nuvio-dev-latest" \
@@ -529,12 +569,12 @@ jobs:
                 [ -n "${id}" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" || true
               done
               gh release edit nuvio-dev-latest --title "NuvioDev ${ROLLING_VERSION}" --notes-file release-notes.md --latest
+            else
+              gh release create nuvio-dev-latest \
+                --title "NuvioDev ${ROLLING_VERSION}" \
+                --notes-file release-notes.md \
+                --latest
             fi
-          else
-            gh release create nuvio-dev-latest \
-              --title "NuvioDev ${ROLLING_VERSION}" \
-              --notes-file release-notes.md \
-              --latest
           fi
           upload_with_retry() {
             local tag="$1"
