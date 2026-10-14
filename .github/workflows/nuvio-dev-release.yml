@@ -407,6 +407,17 @@ jobs:
               exit 1
             fi
           done
+      - name: Stamp Android app version
+        shell: bash
+        # The in-app updater compares the installed app version against the
+        # rolling release. Give each Android build the monotonic rolling
+        # version so a later build looks newer and offers an update.
+        run: |
+          set -euo pipefail
+          printf 'CURRENT_PROJECT_VERSION=%s\nMARKETING_VERSION=%s\n' \
+            "${{ github.run_number }}" "${VERSION}" \
+            > nuvio-enhanced/iosApp/Configuration/Version.xcconfig
+          cat nuvio-enhanced/iosApp/Configuration/Version.xcconfig
       - name: Build full release APKs
         shell: bash
         # The Android app is NuvioMobile-Enhanced, vendored under

@@ -8,6 +8,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 internal actual object AppSystemUiController {
     private var activity: Activity? = null
     private var statusBarVisible: Boolean = true
+    private var immersive: Boolean = false
 
     fun bind(activity: Activity) {
         this.activity = activity
@@ -25,10 +26,19 @@ internal actual object AppSystemUiController {
         apply()
     }
 
+    actual fun setImmersiveMode(active: Boolean) {
+        immersive = active
+        apply()
+    }
+
     private fun apply() {
         val window = activity?.window ?: return
         val controller = WindowCompat.getInsetsController(window, window.decorView)
-        if (statusBarVisible) {
+        if (immersive) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else if (statusBarVisible) {
             controller.show(WindowInsetsCompat.Type.statusBars())
         } else {
             controller.hide(WindowInsetsCompat.Type.statusBars())

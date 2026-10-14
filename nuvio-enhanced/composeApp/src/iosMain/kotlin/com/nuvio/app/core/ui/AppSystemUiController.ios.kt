@@ -1,5 +1,7 @@
-package com.nuvio.app.core.ui
+﻿package com.nuvio.app.core.ui
 
 internal actual object AppSystemUiController {
     actual fun setStatusBarVisible(visible: Boolean) = Unit
+
+    actual fun setImmersiveMode(active: Boolean) = Unit
 }

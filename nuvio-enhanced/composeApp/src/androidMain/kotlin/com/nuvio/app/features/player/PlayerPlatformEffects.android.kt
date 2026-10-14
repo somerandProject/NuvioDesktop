@@ -23,6 +23,7 @@ import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.nuvio.app.core.ui.AppSystemUiController
 import kotlin.math.roundToInt
 
 @Composable
@@ -49,12 +50,16 @@ actual fun EnterImmersivePlayerMode(keepScreenAwake: Boolean) {
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         val previousBehavior = controller.systemBarsBehavior
 
-        controller.hide(WindowInsetsCompat.Type.navigationBars())
+        // Route everything through the app-level controller so the status-bar
+        // setting cannot re-show the bars while the player is immersive.
+        AppSystemUiController.setImmersiveMode(true)
+        controller.hide(WindowInsetsCompat.Type.systemBars())
         controller.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
         onDispose {
-            controller.show(WindowInsetsCompat.Type.navigationBars())
+            AppSystemUiController.setImmersiveMode(false)
+            controller.show(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior = previousBehavior
         }
     }

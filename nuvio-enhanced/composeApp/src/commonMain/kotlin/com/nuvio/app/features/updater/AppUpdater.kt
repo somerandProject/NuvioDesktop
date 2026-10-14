@@ -94,17 +94,14 @@ internal object VersionUtils {
     fun parseVersionParts(raw: String?): List<Int>? {
         val normalized = normalize(raw)
         if (normalized.isBlank()) return null
+        if (normalized.firstOrNull()?.isDigit() != true) return null
 
-        val versionToken = semanticVersionRegex.find(normalized)
-            ?.groups
-            ?.get(1)
-            ?.value
-            ?: normalized.takeIf { it.firstOrNull()?.isDigit() == true }
-            ?: return null
-
-        val parts = versionToken.split('.', '-', '_')
-            .filter { it.isNotBlank() }
-            .mapNotNull { token -> token.takeWhile { it.isDigit() }.toIntOrNull() }
+        // Treat every run of digits as a version component so a trailing
+        // monotonic build (e.g. "0.3-alpha.52") is ordered correctly:
+        // "0.3-alpha.52" -> [0, 3, 52], "0.3-alpha.51" -> [0, 3, 51].
+        val parts = Regex("""\d+""").findAll(normalized)
+            .mapNotNull { it.value.toIntOrNull() }
+            .toList()
 
         return parts.takeIf { it.isNotEmpty() }
     }
@@ -167,7 +164,7 @@ private object AppUpdaterRepository {
     suspend fun getLatestChannelUpdate(): Result<AppUpdate> = runCatching {
         val response = httpRequestRaw(
             method = "GET",
-            url = "$gitHubApiBase/repos/$gitHubOwner/$gitHubRepo/releases?per_page=20",
+            url = "$gitHubApiBase/repos/$gitHubOwner/$gitHubRepo/releases?per_page=100",
             headers = mapOf(
                 "Accept" to "application/vnd.github+json",
                 "User-Agent" to "NuvioMobile",
@@ -203,7 +200,7 @@ private object AppUpdaterRepository {
     }
 
     private fun GitHubReleaseDto.isInstallableRelease(): Boolean =
-        !draft && !prerelease && chooseBestApkAsset(assets) != null
+        !draft && chooseBestApkAsset(assets) != null
 
     private fun GitHubReleaseDto.matchesRequestedChannel(): Boolean {
         if (releaseChannelBranches.any { channel ->
@@ -335,8 +332,13 @@ class AppUpdaterController internal constructor(
                     )
                 }
 
-                if (showNoUpdateFeedback || error is NoChannelReleaseException) {
-                    NuvioToastController.show(error.message ?: getString(Res.string.updates_check_failed))
+                if (showNoUpdateFeedback) {
+                    val message = if (error is NoChannelReleaseException) {
+                        getString(Res.string.updates_latest_version)
+                    } else {
+                        error.message ?: getString(Res.string.updates_check_failed)
+                    }
+                    NuvioToastController.show(message)
                 }
             }
         }
