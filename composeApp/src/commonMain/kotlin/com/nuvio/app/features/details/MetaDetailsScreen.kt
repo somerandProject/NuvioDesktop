@@ -5,12 +5,13 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,17 +19,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -38,14 +35,14 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CheckCircleOutline
-import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlaylistAddCheckCircle
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import com.nuvio.app.core.ui.NuvioLoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,48 +57,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nuvio.app.core.ui.NuvioAsyncImage as AsyncImage
-import co.touchlab.kermit.Logger
+import coil3.compose.AsyncImage
 import com.nuvio.app.core.build.AppFeaturePolicy
 import com.nuvio.app.core.build.TrailerPlaybackMode
-import com.nuvio.app.core.format.formatReleaseDateForDisplay
 import com.nuvio.app.core.network.NetworkCondition
 import com.nuvio.app.core.network.NetworkStatusRepository
-import com.nuvio.app.core.i18n.localizedSeasonEpisodeCode
 import com.nuvio.app.core.ui.NuvioBackButton
-import com.nuvio.app.core.ui.NuvioDesktopVerticalScrollbar
-import com.nuvio.app.core.ui.NuvioCardDepthSurface
-import com.nuvio.app.core.ui.NuvioPosterZoomActionOverlay
-import com.nuvio.app.core.ui.NuvioToastController
-import com.nuvio.app.core.ui.PosterZoomAnchor
-import com.nuvio.app.core.ui.PosterZoomAnchorHolder
-import com.nuvio.app.core.ui.PosterZoomOverlayAction
-import com.nuvio.app.core.ui.desktopPageHorizontalPaddingForWidth
-import com.nuvio.app.core.ui.nuvioDesktopDragScroll
-import com.nuvio.app.core.ui.ScreenActivityEffect
-import com.nuvio.app.core.ui.TrackingListPickerDialog
+import com.nuvio.app.core.ui.TraktListPickerDialog
 import com.nuvio.app.core.ui.nuvioSafeBottomPadding
-import com.nuvio.app.core.ui.rememberHeroStretchState
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
-import com.nuvio.app.features.details.components.DetailActions
+import com.nuvio.app.features.ai.AiAssistantSettingsRepository
+import com.nuvio.app.features.details.components.AiAssistantSheet
+import com.nuvio.app.features.details.components.DetailActionButtons
+import com.nuvio.app.features.details.components.DetailSecondaryAction
 import com.nuvio.app.features.details.components.CommentDetailSheet
 import com.nuvio.app.features.details.components.DetailAdditionalInfoSection
 import com.nuvio.app.features.details.components.DetailCastSection
@@ -112,62 +92,42 @@ import com.nuvio.app.features.details.components.DetailMetaInfo
 import com.nuvio.app.features.details.components.DetailPosterRailSection
 import com.nuvio.app.features.details.components.DetailProductionSection
 import com.nuvio.app.features.details.components.DetailSeriesContent
-import com.nuvio.app.features.details.components.DesktopDetailBackdrop
-import com.nuvio.app.features.details.components.DesktopDetailHero
 import com.nuvio.app.features.details.components.DetailSeriesListEpisode
 import com.nuvio.app.features.details.components.DetailSeriesListHeader
 import com.nuvio.app.features.details.components.DetailTrailersSection
 import com.nuvio.app.features.details.components.EpisodeWatchedActionSheet
 import com.nuvio.app.features.details.components.SeasonWatchedActionSheet
-import com.nuvio.app.features.details.components.TabletDetailBackdrop
-import com.nuvio.app.features.details.components.TabletDetailHero
 import com.nuvio.app.features.details.components.TrailerPlayerPopup
+import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.features.home.MetaPreview
-import com.nuvio.app.features.mdblist.MdbListSettingsRepository
 import com.nuvio.app.features.library.LibraryRepository
-import com.nuvio.app.features.library.PendingTrackingMembershipRemoval
-import com.nuvio.app.features.library.TrackingMembershipRemovalConfirmationHost
-import com.nuvio.app.features.library.executeTrackingMembershipOperation
-import com.nuvio.app.features.library.showTrackingMembershipRewriteFeedback
 import com.nuvio.app.features.library.toLibraryItem
 import com.nuvio.app.features.player.PlayerSettingsRepository
-import com.nuvio.app.features.shuffle.EpisodeShuffleRepository
-import com.nuvio.app.features.shuffle.EpisodeShuffleSheet
-import com.nuvio.app.features.shuffle.ShuffleSurface
-import com.nuvio.app.features.shuffle.rememberShuffleSave
-import com.nuvio.app.features.shuffle.shufflePrimaryAction
-import com.nuvio.app.features.profiles.ProfileRepository
-import com.nuvio.app.features.streams.rememberPlaybackAvailability
+import com.nuvio.app.features.settings.NuvioEnhancedSettingsRepository
 import com.nuvio.app.features.streams.StreamAutoPlayPolicy
+import com.nuvio.app.features.streams.StreamsRepository
 import com.nuvio.app.features.tmdb.TmdbSettingsRepository
 import com.nuvio.app.features.tmdb.TmdbService
-import com.nuvio.app.features.tmdb.originalTmdbImageUrl
 import com.nuvio.app.features.trakt.TraktAuthRepository
 import com.nuvio.app.features.trakt.TraktCommentReview
 import com.nuvio.app.features.trakt.TraktCommentsRepository
 import com.nuvio.app.features.trakt.TraktCommentsSettings
 import com.nuvio.app.features.trakt.TraktConnectionMode
-import com.nuvio.app.features.tracking.TrackingLibraryTab
-import com.nuvio.app.features.tracking.TrackingMembershipApplyResult
-import com.nuvio.app.features.tracking.toggleTrackingLibraryMembership
-import com.nuvio.app.features.tracking.TrackingSettingsRepository
-import com.nuvio.app.features.tracking.TrackingProviderId
+import com.nuvio.app.features.trakt.TraktListTab
+import com.nuvio.app.features.trakt.TraktSettingsRepository
 import com.nuvio.app.features.trailer.TrailerPlaybackResolver
 import com.nuvio.app.features.trailer.TrailerPlaybackSource
 import com.nuvio.app.features.watched.WatchedRepository
 import com.nuvio.app.features.watched.previousReleasedEpisodesBefore
 import com.nuvio.app.features.watched.releasedPlayableEpisodes
 import com.nuvio.app.features.watched.releasedEpisodesForSeason
-import com.nuvio.app.features.watched.watchedItemKey
 import com.nuvio.app.features.watchprogress.CurrentDateProvider
 import com.nuvio.app.features.watchprogress.WatchProgressEntry
-import com.nuvio.app.features.watchprogress.WatchProgressClock
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
 import com.nuvio.app.features.watchprogress.buildPlaybackVideoId
 import com.nuvio.app.features.watchprogress.ContinueWatchingPreferencesRepository
 import com.nuvio.app.features.watching.application.WatchingActions
 import com.nuvio.app.features.watching.application.WatchingState
-import com.nuvio.app.isDesktop
 import com.kmpalette.rememberDominantColorState
 import com.kmpalette.extensions.painter.rememberPainterDominantColorState
 import kotlinx.coroutines.delay
@@ -176,33 +136,19 @@ import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
-private val watchedMarkerDiagnosticLog = Logger.withTag("WatchedMarkerDiag")
-private const val DetailScrolledBackgroundDefaultMaxAlpha = 0.86f
-private const val DetailScrolledBackgroundCinematicMaxAlpha = 0.36f
-private const val DetailScrolledBackgroundFadeHeroFraction = 0.75f
-
-internal fun detailScrolledBackgroundProgress(scrollOffsetPx: Float, heroHeightPx: Int): Float {
-    if (scrollOffsetPx <= 0f || heroHeightPx <= 0) return 0f
-    val fadeDistancePx = heroHeightPx * DetailScrolledBackgroundFadeHeroFraction
-    return (scrollOffsetPx / fadeDistancePx).coerceIn(0f, 1f)
-}
-
-internal fun detailScrolledBackgroundAlpha(
-    scrollOffsetPx: Float,
-    heroHeightPx: Int,
-    maxAlpha: Float = DetailScrolledBackgroundDefaultMaxAlpha,
-): Float {
-    return detailScrolledBackgroundProgress(scrollOffsetPx, heroHeightPx) * maxAlpha.coerceIn(0f, 1f)
-}
+private const val RANDOM_EPISODE_HISTORY_LIMIT = 8
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
 fun MetaDetailsScreen(
     type: String,
     id: String,
+    offlineMode: Boolean = false,
     onBack: () -> Unit,
     onPlay: ((type: String, videoId: String, parentMetaId: String, parentMetaType: String, title: String, logo: String?, poster: String?, background: String?, seasonNumber: Int?, episodeNumber: Int?, episodeTitle: String?, episodeThumbnail: String?, pauseDescription: String?, resumePositionMs: Long?) -> Unit)? = null,
     onPlayManually: ((type: String, videoId: String, parentMetaId: String, parentMetaType: String, title: String, logo: String?, poster: String?, background: String?, seasonNumber: Int?, episodeNumber: Int?, episodeTitle: String?, episodeThumbnail: String?, pauseDescription: String?, resumePositionMs: Long?) -> Unit)? = null,
+    onRandomPlay: ((type: String, videoId: String, parentMetaId: String, parentMetaType: String, title: String, logo: String?, poster: String?, background: String?, seasonNumber: Int?, episodeNumber: Int?, episodeTitle: String?, episodeThumbnail: String?, pauseDescription: String?, resumePositionMs: Long?) -> Unit)? = null,
+    onRandomPlayManually: ((type: String, videoId: String, parentMetaId: String, parentMetaType: String, title: String, logo: String?, poster: String?, background: String?, seasonNumber: Int?, episodeNumber: Int?, episodeTitle: String?, episodeThumbnail: String?, pauseDescription: String?, resumePositionMs: Long?) -> Unit)? = null,
     onOpenMeta: ((MetaPreview) -> Unit)? = null,
     onCastClick: ((MetaPerson, String?) -> Unit)? = null,
     onCompanyClick: ((MetaCompany, String) -> Unit)? = null,
@@ -210,41 +156,41 @@ fun MetaDetailsScreen(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     modifier: Modifier = Modifier,
 ) {
-    val playbackAvailability = rememberPlaybackAvailability()
-    val shuffleProfile by remember {
-        EpisodeShuffleRepository.ensureLoaded()
-        EpisodeShuffleRepository.uiState
-    }.collectAsStateWithLifecycle()
-    val shuffleProfileId = ProfileRepository.activeProfileId
-    var shuffleVisit by remember(type, id, shuffleProfileId) { mutableStateOf(WatchProgressClock.nowEpochMs()) }
-    var shuffleWasInactive by remember(type, id, shuffleProfileId) { mutableStateOf(false) }
-    var showShuffle by remember(type, id, shuffleProfileId) { mutableStateOf(false) }
-    ScreenActivityEffect(type, id, shuffleProfileId) { active ->
-        if (active && shuffleWasInactive) shuffleVisit += 1
-        shuffleWasInactive = !active
-    }
     val uiState by MetaDetailsRepository.uiState.collectAsStateWithLifecycle()
-    val displayedMeta = uiState.meta?.takeIf { it.type == type && it.id == id }
-        ?: MetaDetailsRepository.peek(type, id)
+    val downloadsUiState by remember {
+        DownloadsRepository.ensureLoaded()
+        DownloadsRepository.uiState
+    }.collectAsStateWithLifecycle()
+    val downloadedMeta = remember(downloadsUiState.items, type, id) {
+        DownloadsRepository.findOfflineMetaDetails(type, id)
+    }
+    val offlineDetailsAvailable = offlineMode && downloadedMeta != null
+    val displayedMeta = if (offlineDetailsAvailable) {
+        downloadedMeta
+    } else {
+        uiState.meta?.takeIf { it.type == type && it.id == id }
+            ?: MetaDetailsRepository.peek(type, id)
+            ?: downloadedMeta
+    }
     val metaScreenSettingsUiState by remember {
         MetaScreenSettingsRepository.ensureLoaded()
         MetaScreenSettingsRepository.uiState
-    }.collectAsStateWithLifecycle()
-    val mdbListSettings by remember {
-        MdbListSettingsRepository.ensureLoaded()
-        MdbListSettingsRepository.uiState
     }.collectAsStateWithLifecycle()
     val traktAuthUiState by remember {
         TraktAuthRepository.ensureLoaded()
         TraktAuthRepository.uiState
     }.collectAsStateWithLifecycle()
-    val trackingSettingsUiState by remember {
-        TrackingSettingsRepository.ensureLoaded()
-        TrackingSettingsRepository.uiState
+    val traktSettingsUiState by remember {
+        TraktSettingsRepository.ensureLoaded()
+        TraktSettingsRepository.uiState
     }.collectAsStateWithLifecycle()
     val tmdbSettingsUiState by remember {
         TmdbSettingsRepository.ensureLoaded()
         TmdbSettingsRepository.uiState
+    }.collectAsStateWithLifecycle()
+    val aiAssistantSettings by remember {
+        AiAssistantSettingsRepository.ensureLoaded()
+        AiAssistantSettingsRepository.uiState
     }.collectAsStateWithLifecycle()
     val libraryUiState by remember {
         LibraryRepository.ensureLoaded()
@@ -259,19 +205,18 @@ fun MetaDetailsScreen(
         WatchProgressRepository.ensureLoaded()
         WatchProgressRepository.uiState
     }.collectAsStateWithLifecycle()
-    val progressByVideoId = remember(watchProgressUiState.entries, id) {
-        watchProgressUiState.byVideoIdForContent(id)
-    }
     val playerSettingsUiState by remember {
         PlayerSettingsRepository.ensureLoaded()
         PlayerSettingsRepository.uiState
+    }.collectAsStateWithLifecycle()
+    val nuvioEnhancedSettings by remember {
+        NuvioEnhancedSettingsRepository.ensureLoaded()
+        NuvioEnhancedSettingsRepository.uiState
     }.collectAsStateWithLifecycle()
     val networkStatusUiState by NetworkStatusRepository.uiState.collectAsStateWithLifecycle()
     var autoLoadAttempted by remember(type, id) { mutableStateOf(false) }
     var observedOfflineState by remember(type, id) { mutableStateOf(false) }
     var selectedEpisodeForActions by remember(type, id) { mutableStateOf<MetaVideo?>(null) }
-    var selectedEpisodeZoomAnchor by remember(type, id) { mutableStateOf<PosterZoomAnchor?>(null) }
-    val episodeOverlayHazeState = rememberHazeState()
     var selectedSeasonForActions by remember(type, id) { mutableStateOf<Int?>(null) }
     val commentsEnabled by remember {
         TraktCommentsSettings.ensureLoaded()
@@ -286,75 +231,22 @@ fun MetaDetailsScreen(
     var selectedComment by remember(type, id) { mutableStateOf<TraktCommentReview?>(null) }
     val detailsScope = rememberCoroutineScope()
     var showLibraryListPicker by remember(type, id) { mutableStateOf(false) }
-    var pickerTabs by remember(type, id) { mutableStateOf<List<TrackingLibraryTab>>(emptyList()) }
+    var pickerTabs by remember(type, id) { mutableStateOf<List<TraktListTab>>(emptyList()) }
     var pickerMembership by remember(type, id) { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var pickerPending by remember(type, id) { mutableStateOf(false) }
     var pickerError by remember(type, id) { mutableStateOf<String?>(null) }
-    var pendingTrackingRemoval by remember(type, id) {
-        mutableStateOf<PendingTrackingMembershipRemoval?>(null)
-    }
-    val trackingListsUpdateFailedMessage = stringResource(Res.string.tracking_lists_update_failed)
     var episodeImdbRatings by remember(type, id) { mutableStateOf<Map<Pair<Int, Int>, Double>>(emptyMap()) }
     var deferredMetaWorkAllowed by remember(type, id) { mutableStateOf(false) }
+    var showAiAssistant by remember(type, id) { mutableStateOf(false) }
 
-    LaunchedEffect(
-        displayedMeta?.id,
-        displayedMeta?.type,
-        displayedMeta?.name,
-        displayedMeta?.videos,
-        watchedUiState.items,
-        watchedUiState.isLoaded,
-        watchedUiState.hasLoadedRemoteItems,
-        fullyWatchedSeriesKeys,
-        watchProgressUiState.entries,
-        trackingSettingsUiState.watchProgressSource,
-    ) {
-        val meta = displayedMeta ?: return@LaunchedEffect
-        val posterKey = watchedItemKey(meta.type, meta.id)
-        val expectedEpisodeKeys = meta.videos.map { episode ->
-            watchedItemKey(meta.type, meta.id, episode.season, episode.episode)
-        }
-        val matchedEpisodeKeys = expectedEpisodeKeys.filter(watchedUiState.watchedKeys::contains)
-        val completedProgressMatches = meta.videos.count { episode ->
-            val videoId = buildPlaybackVideoId(
-                parentMetaId = meta.id,
-                seasonNumber = episode.season,
-                episodeNumber = episode.episode,
-                fallbackVideoId = episode.id,
-            )
-            progressByVideoId[videoId]?.isEffectivelyCompleted == true
-        }
-        val directItemKeys = watchedUiState.items
-            .asSequence()
-            .filter { item -> item.id == meta.id }
-            .take(10)
-            .joinToString(separator = ",") { item ->
-                watchedItemKey(item.type, item.id, item.season, item.episode)
-            }
-        val titleCandidateKeys = watchedUiState.items
-            .asSequence()
-            .filter { item -> item.name.equals(meta.name, ignoreCase = true) }
-            .take(10)
-            .joinToString(separator = ",") { item ->
-                watchedItemKey(item.type, item.id, item.season, item.episode)
-            }
-        watchedMarkerDiagnosticLog.i {
-            "marker state requestedSource=${trackingSettingsUiState.watchProgressSource} " +
-                "content=${meta.type}:${meta.id} repositoryLoaded=${watchedUiState.isLoaded} " +
-                "remoteLoaded=${watchedUiState.hasLoadedRemoteItems} repositoryItems=${watchedUiState.items.size} " +
-                "posterKey=$posterKey posterInWatched=${posterKey in watchedUiState.watchedKeys} " +
-                "posterInFullyWatched=${posterKey in fullyWatchedSeriesKeys} videos=${meta.videos.size} " +
-                "episodeMarkerMatches=${matchedEpisodeKeys.size} completedProgressMatches=$completedProgressMatches " +
-                "directItemKeys=[$directItemKeys] titleCandidateKeys=[$titleCandidateKeys] " +
-                "expectedEpisodeKeys=[${expectedEpisodeKeys.take(10).joinToString(",")}] " +
-                "repositoryKeySample=[${watchedUiState.watchedKeys.take(10).joinToString(",")}]"
-        }
-    }
-
-    val shouldShowComments = commentsEnabled &&
+    val shouldShowComments = !offlineDetailsAvailable &&
+        commentsEnabled &&
         traktAuthUiState.mode == TraktConnectionMode.CONNECTED &&
         displayedMeta != null &&
         displayedMeta.type.lowercase().let { it == "movie" || it == "series" || it == "show" || it == "tv" }
+    val supportsAiAssistant = displayedMeta?.type
+        ?.lowercase()
+        ?.let { it in setOf("movie", "film", "series", "show", "tv", "tvshow") } == true
 
     LaunchedEffect(displayedMeta?.id) {
         deferredMetaWorkAllowed = false
@@ -386,28 +278,23 @@ fun MetaDetailsScreen(
         isCommentsLoading = false
     }
 
-    LaunchedEffect(
-        displayedMeta?.id,
-        displayedMeta?.videos,
-        deferredMetaWorkAllowed,
-        metaScreenSettingsUiState.episodeRatingsVisibility,
-    ) {
-        if (!metaScreenSettingsUiState.episodeRatingsVisibility.showRatings) {
+    LaunchedEffect(displayedMeta?.id, displayedMeta?.videos, deferredMetaWorkAllowed, offlineDetailsAvailable) {
+        val metaForRatings = displayedMeta
+        if (offlineDetailsAvailable) {
             episodeImdbRatings = emptyMap()
             return@LaunchedEffect
         }
-        val metaForRatings = displayedMeta
         if (!deferredMetaWorkAllowed) return@LaunchedEffect
         if (metaForRatings == null || !metaForRatings.isSeriesLikeForEpisodeRatings()) {
             episodeImdbRatings = emptyMap()
             return@LaunchedEffect
         }
 
-        val imdbId = extractImdbId(metaForRatings.id) ?: extractImdbId(id) ?: metaForRatings.imdbId
+        val imdbId = extractImdbId(metaForRatings.id) ?: extractImdbId(id)
         val tmdbId = extractTmdbId(metaForRatings.id)
             ?: extractTmdbId(id)
-            ?: TmdbService.ensureTmdbId(metaForRatings.id, metaForRatings.type, fallbackImdbId = metaForRatings.imdbId)?.toIntOrNull()
-            ?: TmdbService.ensureTmdbId(id, type, fallbackImdbId = metaForRatings.imdbId)?.toIntOrNull()
+            ?: TmdbService.ensureTmdbId(metaForRatings.id, metaForRatings.type)?.toIntOrNull()
+            ?: TmdbService.ensureTmdbId(id, type)?.toIntOrNull()
 
         if (imdbId == null && tmdbId == null) {
             episodeImdbRatings = emptyMap()
@@ -420,7 +307,11 @@ fun MetaDetailsScreen(
         )
     }
 
-    LaunchedEffect(type, id, displayedMeta, uiState.isLoading, autoLoadAttempted) {
+    LaunchedEffect(type, id, offlineDetailsAvailable, displayedMeta, uiState.isLoading, autoLoadAttempted) {
+        if (offlineDetailsAvailable) {
+            autoLoadAttempted = true
+            return@LaunchedEffect
+        }
         if (!autoLoadAttempted && displayedMeta == null && !uiState.isLoading) {
             autoLoadAttempted = true
             MetaDetailsRepository.load(type, id)
@@ -430,21 +321,21 @@ fun MetaDetailsScreen(
     LaunchedEffect(
         type,
         id,
-        displayedMeta?.id,
-        uiState.isLoading,
-        trackingSettingsUiState.moreLikeThisSource,
+        traktSettingsUiState.moreLikeThisSource,
         traktAuthUiState.mode,
         tmdbSettingsUiState.enabled,
         tmdbSettingsUiState.useMoreLikeThis,
         tmdbSettingsUiState.language,
-        mdbListSettings,
+        offlineDetailsAvailable,
     ) {
+        if (offlineDetailsAvailable) return@LaunchedEffect
         if (displayedMeta != null && !uiState.isLoading) {
             MetaDetailsRepository.load(type, id)
         }
     }
 
-    LaunchedEffect(networkStatusUiState.condition, displayedMeta, uiState.isLoading, type, id) {
+    LaunchedEffect(networkStatusUiState.condition, displayedMeta, uiState.isLoading, type, id, offlineDetailsAvailable) {
+        if (offlineDetailsAvailable) return@LaunchedEffect
         when (networkStatusUiState.condition) {
             NetworkCondition.NoInternet,
             NetworkCondition.ServersUnreachable,
@@ -471,22 +362,11 @@ fun MetaDetailsScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (selectedEpisodeZoomAnchor != null) {
-                        Modifier.hazeSource(state = episodeOverlayHazeState)
-                    } else {
-                        Modifier
-                    },
-                )
-                .background(MaterialTheme.colorScheme.background),
-        ) {
-            when {
+        when {
             displayedMeta == null && uiState.isLoading -> {
                 NuvioLoadingIndicator(
                     modifier = Modifier.align(Alignment.Center),
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
 
@@ -526,6 +406,7 @@ fun MetaDetailsScreen(
 
             displayedMeta != null -> {
                 val meta = displayedMeta
+                val offlineDetailsMode = offlineMode && downloadedMeta != null && meta.id == downloadedMeta.id
                 val metaPreview = remember(meta) { meta.toMetaPreview() }
                 val todayIsoDate = CurrentDateProvider.todayIsoDate()
                 val isSaved = remember(
@@ -547,7 +428,7 @@ fun MetaDetailsScreen(
                 val openLibraryListPicker = remember(meta) {
                     {
                         val libraryItem = meta.toLibraryItem(savedAtEpochMs = 0L)
-                        pickerTabs = LibraryRepository.libraryListTabs(libraryItem)
+                        pickerTabs = LibraryRepository.libraryListTabs()
                         pickerMembership = pickerTabs.associate { it.key to false }
                         pickerPending = true
                         pickerError = null
@@ -555,7 +436,7 @@ fun MetaDetailsScreen(
                         detailsScope.launch {
                             runCatching {
                                 val snapshot = LibraryRepository.getMembershipSnapshot(libraryItem)
-                                val tabs = LibraryRepository.libraryListTabs(libraryItem)
+                                val tabs = LibraryRepository.libraryListTabs()
                                 pickerTabs = tabs
                                 pickerMembership = tabs.associate { tab ->
                                     tab.key to (snapshot[tab.key] == true)
@@ -568,44 +449,9 @@ fun MetaDetailsScreen(
                         Unit
                     }
                 }
-                val toggleSaved = remember(meta, trackingListsUpdateFailedMessage) {
+                val toggleSaved = remember(meta) {
                     {
-                        val item = meta.toLibraryItem(savedAtEpochMs = 0L)
-                        detailsScope.launch {
-                            val toggleMembership: suspend (Set<TrackingProviderId>) ->
-                                TrackingMembershipApplyResult = { confirmedProviders ->
-                                LibraryRepository.toggleSaved(
-                                    item = item,
-                                    confirmedRemovalProviders = confirmedProviders,
-                                )
-                            }
-                            executeTrackingMembershipOperation(
-                                operation = { toggleMembership(emptySet()) },
-                                onSuccess = { result ->
-                                    if (result.requiresRemovalConfirmation) {
-                                        pendingTrackingRemoval = PendingTrackingMembershipRemoval(
-                                            itemTitle = item.name,
-                                            confirmations = result.requiredRemovalConfirmations,
-                                            retry = toggleMembership,
-                                            onApplied = ::showTrackingMembershipRewriteFeedback,
-                                            onFailure = { error ->
-                                                NuvioToastController.show(
-                                                    error.message ?: trackingListsUpdateFailedMessage,
-                                                )
-                                            },
-                                        )
-                                    } else {
-                                        showTrackingMembershipRewriteFeedback(result)
-                                    }
-                                },
-                                onFailure = { error ->
-                                    NuvioToastController.show(
-                                        error.message ?: trackingListsUpdateFailedMessage,
-                                    )
-                                },
-                            )
-                        }
-                        Unit
+                        LibraryRepository.toggleSaved(meta.toLibraryItem(savedAtEpochMs = 0L))
                     }
                 }
                 val toggleWatched = remember(metaPreview) {
@@ -615,6 +461,9 @@ fun MetaDetailsScreen(
                         }
                         Unit
                     }
+                }
+                val progressByVideoId = remember(watchProgressUiState.entries) {
+                    watchProgressUiState.byVideoId
                 }
                 LaunchedEffect(meta.id, meta.type, watchProgressUiState.hasLoadedRemoteProgress) {
                     if (meta.type.lowercase() in setOf("series", "show", "tv", "tvshow")) {
@@ -640,32 +489,13 @@ fun MetaDetailsScreen(
                 val movieProgress = progressByVideoId[meta.id]
                     ?.takeUnless { it.isCompleted }
                 val cwPrefs by ContinueWatchingPreferencesRepository.uiState.collectAsStateWithLifecycle()
-                val shuffleSettings = shuffleProfile.settings(meta.id, meta.type)
-                val hasShuffleEpisodes = remember(meta.videos) {
-                    meta.videos.any { (it.season ?: 0) > 0 && (it.episode ?: 0) > 0 }
-                }
-                val showShuffleButton = shuffleProfile.available &&
-                    meta.type.lowercase() in setOf("series", "tv", "show", "tvshow") &&
-                    (shuffleSettings.enabled || hasShuffleEpisodes)
-                val saveShuffle = rememberShuffleSave(meta.id, shuffleProfileId, shuffleSettings)
-                val seriesAction = remember(watchProgressUiState.entries, watchedUiState.items, meta, todayIsoDate, cwPrefs.upNextFromFurthestEpisode, watchedUiState.watchedKeys, shuffleSettings, shuffleVisit, shuffleProfileId) {
-                    if (shuffleSettings.enabled) meta.shufflePrimaryAction(
-                        profileId = shuffleProfileId,
-                        settings = shuffleSettings,
+                val seriesAction = remember(watchProgressUiState.entries, watchedUiState.items, meta, todayIsoDate, cwPrefs.upNextFromFurthestEpisode) {
+                    meta.seriesPrimaryAction(
                         entries = watchProgressUiState.entries,
-                        watchedKeys = watchedUiState.watchedKeys,
-                        visit = shuffleVisit,
-                    ) else {
-                        EpisodeShuffleRepository.shuffle.clearSelection(shuffleProfileId, meta.id, ShuffleSurface.DETAIL)
-                        meta.seriesPrimaryAction(
-                            entries = watchProgressUiState.entries,
-                            watchedItems = watchedUiState.items,
-                            todayIsoDate = todayIsoDate,
-                            preferFurthestEpisode = cwPrefs.upNextFromFurthestEpisode,
-                            watchedKeys = watchedUiState.watchedKeys,
-                            allowRewatch = true,
-                        )
-                    }
+                        watchedItems = watchedUiState.items,
+                        todayIsoDate = todayIsoDate,
+                        preferFurthestEpisode = cwPrefs.upNextFromFurthestEpisode,
+                    )
                 }
                 val seriesActionVideo = remember(seriesAction, meta.id, meta.videos) {
                     val action = seriesAction ?: return@remember null
@@ -689,6 +519,151 @@ fun MetaDetailsScreen(
                 val seriesStreamVideoId = remember(seriesAction, seriesActionVideo) {
                     val action = seriesAction ?: return@remember null
                     seriesActionVideo?.id?.takeIf { it.isNotBlank() } ?: action.videoId
+                }
+                LaunchedEffect(
+                    nuvioEnhancedSettings.backgroundStreamPrefetchEnabled,
+                    offlineDetailsMode,
+                    meta.id,
+                    meta.type,
+                    meta.name,
+                    seriesStreamVideoId,
+                    seriesAction?.seasonNumber,
+                    seriesAction?.episodeNumber,
+                    seriesAction?.episodeTitle,
+                ) {
+                    if (!nuvioEnhancedSettings.backgroundStreamPrefetchEnabled) return@LaunchedEffect
+                    if (offlineDetailsMode) return@LaunchedEffect
+                    val hasEpisodesForPrefetch = meta.type == "series" || meta.videos.any { it.season != null || it.episode != null }
+                    val targetVideoId = if (hasEpisodesForPrefetch && seriesAction != null) {
+                        seriesStreamVideoId ?: seriesAction.videoId
+                    } else {
+                        meta.id
+                    }.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+                    StreamsRepository.load(
+                        type = meta.type,
+                        videoId = targetVideoId,
+                        parentMetaId = meta.id,
+                        parentMetaType = meta.type,
+                        season = seriesAction?.seasonNumber.takeIf { hasEpisodesForPrefetch },
+                        episode = seriesAction?.episodeNumber.takeIf { hasEpisodesForPrefetch },
+                        manualSelection = false,
+                        searchTitle = if (hasEpisodesForPrefetch) seriesAction?.episodeTitle ?: meta.name else meta.name,
+                    )
+                }
+                val showRandomEpisodeButton = metaScreenSettingsUiState.randomEpisodeButton &&
+                    meta.isSeriesLikeForEpisodeRatings()
+                val randomEpisodeLabel = stringResource(Res.string.action_random_episode)
+                var randomEpisodeHistory by remember(
+                    meta.id,
+                    seriesActionVideo?.season,
+                    seriesActionVideo?.episode,
+                    todayIsoDate,
+                ) {
+                    mutableStateOf<List<String>>(emptyList())
+                }
+
+                fun MetaVideo.randomEpisodePlaybackId(): String =
+                    buildPlaybackVideoId(
+                        parentMetaId = meta.id,
+                        seasonNumber = season,
+                        episodeNumber = episode,
+                        fallbackVideoId = id,
+                    )
+
+                fun pickRandomEpisode(): MetaVideo? {
+                    if (!showRandomEpisodeButton) return null
+                    val releasedEpisodes = meta.releasedPlayableEpisodes(todayIsoDate)
+                        .filter { video -> normalizeSeasonNumber(video.season) > 0 }
+                    if (releasedEpisodes.isEmpty()) return null
+
+                    val currentPlaybackId = seriesActionVideo?.randomEpisodePlaybackId()
+
+                    val basePool = releasedEpisodes.filterNot { episode ->
+                        currentPlaybackId != null && episode.randomEpisodePlaybackId() == currentPlaybackId
+                    }
+                    val nonRepeatingPool = basePool.filterNot { episode ->
+                        basePool.size > 1 &&
+                            episode.randomEpisodePlaybackId() in randomEpisodeHistory
+                    }
+
+                    val candidates = when {
+                        nonRepeatingPool.isNotEmpty() -> nonRepeatingPool
+                        basePool.isNotEmpty() -> basePool
+                        else -> releasedEpisodes
+                    }
+
+                    val selected = candidates.random()
+                    randomEpisodeHistory = (randomEpisodeHistory + selected.randomEpisodePlaybackId())
+                        .takeLast(RANDOM_EPISODE_HISTORY_LIMIT)
+                    return selected
+                }
+
+                val randomEpisodeAction = if (
+                    showRandomEpisodeButton &&
+                    (onRandomPlay != null || onRandomPlayManually != null || onPlay != null || onPlayManually != null)
+                ) {
+                    val clickHandler = onRandomPlay ?: onPlay ?: onRandomPlayManually ?: onPlayManually
+                    val longClickHandler = onRandomPlayManually ?: onPlayManually ?: onRandomPlay ?: onPlay
+                    DetailSecondaryAction(
+                        label = randomEpisodeLabel,
+                        icon = Icons.Default.Shuffle,
+                        onClick = {
+                            pickRandomEpisode()?.let { video ->
+                                val season = video.season
+                                val episode = video.episode
+                                val playbackVideoId = video.randomEpisodePlaybackId()
+                                val streamVideoId = video.id.takeIf { it.isNotBlank() } ?: playbackVideoId
+                                val savedProgress = watchProgressUiState.byVideoId[streamVideoId]
+                                    ?.takeUnless { it.isCompleted }
+                                clickHandler?.invoke(
+                                    meta.type,
+                                    streamVideoId,
+                                    meta.id,
+                                    meta.type,
+                                    meta.name,
+                                    meta.logo,
+                                    meta.poster,
+                                    meta.background,
+                                    season,
+                                    episode,
+                                    video.title,
+                                    video.thumbnail,
+                                    video.overview,
+                                    savedProgress?.lastPositionMs,
+                                )
+                            }
+                        },
+                        onLongClick = longClickHandler?.let { handler ->
+                            {
+                                pickRandomEpisode()?.let { video ->
+                                    val season = video.season
+                                    val episode = video.episode
+                                    val playbackVideoId = video.randomEpisodePlaybackId()
+                                    val streamVideoId = video.id.takeIf { it.isNotBlank() } ?: playbackVideoId
+                                    val savedProgress = watchProgressUiState.byVideoId[streamVideoId]
+                                        ?.takeUnless { it.isCompleted }
+                                    handler(
+                                        meta.type,
+                                        streamVideoId,
+                                        meta.id,
+                                        meta.type,
+                                        meta.name,
+                                        meta.logo,
+                                        meta.poster,
+                                        meta.background,
+                                        season,
+                                        episode,
+                                        video.title,
+                                        video.thumbnail,
+                                        video.overview,
+                                        savedProgress?.lastPositionMs,
+                                    )
+                                }
+                            }
+                        },
+                    )
+                } else {
+                    null
                 }
                 val hasEpisodes = meta.videos.any { it.season != null || it.episode != null }
                 val episodeListGroupedEpisodes = remember(
@@ -728,15 +703,14 @@ fun MetaDetailsScreen(
                 val hasCollectionSection = remember(meta) {
                     meta.collectionName != null && meta.collectionItems.isNotEmpty()
                 }
-                val hasMoreLikeThisSection = remember(meta) {
-                    meta.moreLikeThis.isNotEmpty()
+                val hasMoreLikeThisSection = remember(meta, offlineDetailsMode) {
+                    !offlineDetailsMode && meta.moreLikeThis.isNotEmpty()
                 }
-                val hasTrailersSection = remember(meta) {
-                    meta.trailers.isNotEmpty()
+                val hasTrailersSection = remember(meta, offlineDetailsMode) {
+                    !offlineDetailsMode && meta.trailers.isNotEmpty()
                 }
                 val uriHandler = LocalUriHandler.current
-                val trailerPlaybackMode = AppFeaturePolicy.trailerPlaybackMode
-                val inAppTrailerPlaybackEnabled = trailerPlaybackMode == TrailerPlaybackMode.IN_APP
+                val inAppTrailerPlaybackEnabled = AppFeaturePolicy.trailerPlaybackMode == TrailerPlaybackMode.IN_APP
                 val trailerScope = rememberCoroutineScope()
                 var selectedTrailer by remember(meta.id) { mutableStateOf<MetaTrailer?>(null) }
                 var trailerPlaybackSource by remember(meta.id) { mutableStateOf<TrailerPlaybackSource?>(null) }
@@ -744,12 +718,13 @@ fun MetaDetailsScreen(
                 var trailerErrorMessage by remember(meta.id) { mutableStateOf<String?>(null) }
                 var trailerRequestToken by remember(meta.id) { mutableIntStateOf(0) }
                 var isLeavingDetails by remember(meta.id) { mutableStateOf(false) }
-                val heroTrailerCandidate = remember(meta.trailers) {
-                    selectHeroTrailer(meta.trailers)
+                val heroTrailerCandidate = remember(meta.trailers, offlineDetailsMode) {
+                    if (offlineDetailsMode) null else selectHeroTrailer(meta.trailers)
                 }
                 val heroTrailerPlaybackEnabled = AppFeaturePolicy.heroTrailerPlaybackSupported &&
                     inAppTrailerPlaybackEnabled &&
-                    metaScreenSettingsUiState.heroTrailerPlayback
+                    metaScreenSettingsUiState.heroTrailerPlayback &&
+                    !offlineDetailsMode
                 var heroTrailerPlaybackSource by remember(meta.id, heroTrailerCandidate?.id) { mutableStateOf<TrailerPlaybackSource?>(null) }
                 var heroTrailerReady by remember(meta.id, heroTrailerCandidate?.id) { mutableStateOf(false) }
                 var heroTrailerFinished by remember(meta.id, heroTrailerCandidate?.id) { mutableStateOf(false) }
@@ -781,52 +756,40 @@ fun MetaDetailsScreen(
                     heroTrailerFinished = true
                     onBack()
                 }
-                val resolveTrailer: (MetaTrailer) -> Unit = remember(meta.id, trailerPlaybackMode, uriHandler) {
+                val resolveTrailer: (MetaTrailer) -> Unit = remember(meta.id, inAppTrailerPlaybackEnabled, uriHandler) {
                     { trailer ->
                         val youtubeUrl = trailer.youtubePlaybackUrl()
-                        when (trailerPlaybackMode) {
-                            TrailerPlaybackMode.EXTERNAL -> runCatching { uriHandler.openUri(youtubeUrl) }
-                            TrailerPlaybackMode.IN_APP -> {
-                                selectedTrailer = trailer
-                                trailerPlaybackSource = null
-                                trailerErrorMessage = null
-                                trailerLoading = true
-                                trailerRequestToken += 1
-                                val currentRequestToken = trailerRequestToken
-                                trailerScope.launch {
-                                    val resolvedSource = runCatching {
-                                        TrailerPlaybackResolver.resolveFromYouTubeUrl(youtubeUrl)
-                                    }.getOrNull()
-                                    if (currentRequestToken != trailerRequestToken) {
-                                        return@launch
-                                    }
-                                    trailerPlaybackSource = resolvedSource
-                                    trailerErrorMessage = if (resolvedSource == null) {
-                                        getString(Res.string.trailer_no_playable_stream)
-                                    } else {
-                                        null
-                                    }
-                                    trailerLoading = false
+                        if (!inAppTrailerPlaybackEnabled) {
+                            runCatching { uriHandler.openUri(youtubeUrl) }
+                        } else {
+                            selectedTrailer = trailer
+                            trailerPlaybackSource = null
+                            trailerErrorMessage = null
+                            trailerLoading = true
+                            trailerRequestToken += 1
+                            val currentRequestToken = trailerRequestToken
+                            trailerScope.launch {
+                                val resolvedSource = runCatching {
+                                    TrailerPlaybackResolver.resolveFromYouTubeUrl(youtubeUrl)
+                                }.getOrNull()
+                                if (currentRequestToken != trailerRequestToken) {
+                                    return@launch
                                 }
+                                trailerPlaybackSource = resolvedSource
+                                trailerErrorMessage = if (resolvedSource == null) {
+                                    getString(Res.string.trailer_no_playable_stream)
+                                } else {
+                                    null
+                                }
+                                trailerLoading = false
                             }
                         }
                     }
                 }
-                val primaryVideoId = seriesStreamVideoId ?: seriesAction?.videoId ?: meta.id
-                val shufflePoolEmpty = shuffleSettings.enabled && seriesAction == null
-                val isPrimaryPlayEnabled = shufflePoolEmpty || playbackAvailability.canPlay(
-                    type = meta.type,
-                    videoId = primaryVideoId,
-                    parentMetaId = meta.id,
-                    seasonNumber = seriesAction?.seasonNumber,
-                    episodeNumber = seriesAction?.episodeNumber,
-                )
                 val playText = stringResource(Res.string.action_play)
                 val resumeText = stringResource(Res.string.action_resume)
-                val chooseEpisodesText = stringResource(Res.string.shuffle_change_selection)
-                val playButtonLabel = remember(movieProgress, seriesAction, meta.type, hasEpisodes, playText, resumeText, shufflePoolEmpty, chooseEpisodesText) {
+                val playButtonLabel = remember(movieProgress, seriesAction, meta.type, hasEpisodes, playText, resumeText) {
                     when {
-                        shufflePoolEmpty -> chooseEpisodesText
                         (meta.type == "series" || hasEpisodes) && seriesAction != null ->
                             seriesAction.label
                         meta.type != "series" && !hasEpisodes && movieProgress != null ->
@@ -836,7 +799,6 @@ fun MetaDetailsScreen(
                 }
                 val onPrimaryPlayClick: () -> Unit = {
                     when {
-                        shufflePoolEmpty -> showShuffle = true
                         (meta.type == "series" || hasEpisodes) && seriesAction != null -> {
                             onPlay?.invoke(
                                 meta.type,
@@ -879,7 +841,7 @@ fun MetaDetailsScreen(
                 val manualPlayHandler = onPlayManually
                 val showManualPlayOption = manualPlayHandler != null && StreamAutoPlayPolicy.isEffectivelyEnabled(playerSettingsUiState)
                 val onPrimaryPlayLongClick: (() -> Unit)? = manualPlayHandler
-                    ?.takeIf { !shufflePoolEmpty && showManualPlayOption && playbackAvailability.canStream(meta.type, primaryVideoId) }
+                    ?.takeIf { showManualPlayOption }
                     ?.let { manualPlay ->
                         {
                             when {
@@ -933,12 +895,7 @@ fun MetaDetailsScreen(
                         fallbackVideoId = video.id,
                     )
                     val streamVideoId = video.id.takeIf { it.isNotBlank() } ?: playbackVideoId
-                    val savedProgress = watchProgressUiState.progressForVideo(
-                        videoId = streamVideoId,
-                        parentMetaId = meta.id,
-                        seasonNumber = season,
-                        episodeNumber = episode,
-                    )
+                    val savedProgress = watchProgressUiState.byVideoId[streamVideoId]
                         ?.takeUnless { it.isCompleted }
                     onPlay?.invoke(
                         meta.type,
@@ -967,12 +924,7 @@ fun MetaDetailsScreen(
                         fallbackVideoId = video.id,
                     )
                     val streamVideoId = video.id.takeIf { it.isNotBlank() } ?: playbackVideoId
-                    val savedProgress = watchProgressUiState.progressForVideo(
-                        videoId = streamVideoId,
-                        parentMetaId = meta.id,
-                        seasonNumber = season,
-                        episodeNumber = episode,
-                    )
+                    val savedProgress = watchProgressUiState.byVideoId[streamVideoId]
                         ?.takeUnless { it.isCompleted }
                     onPlayManually?.invoke(
                         meta.type,
@@ -991,26 +943,7 @@ fun MetaDetailsScreen(
                         savedProgress?.lastPositionMs,
                     )
                 }
-                if (showShuffle && showShuffleButton) {
-                    EpisodeShuffleSheet(
-                        meta = meta,
-                        settings = shuffleSettings,
-                        onSave = saveShuffle,
-                        watchedKeys = watchedUiState.watchedKeys,
-                        progressEntries = watchProgressUiState.entries,
-                        blurUnwatchedEpisodes = metaScreenSettingsUiState.blurUnwatchedEpisodes,
-                        onDismiss = { showShuffle = false },
-                        onPlay = onEpisodePlayClick,
-                        onPlayManually = onEpisodeManualPlayClick.takeIf { showManualPlayOption },
-                        onStartFromBeginning = { video ->
-                            onPlay?.invoke(meta.type, video.id, meta.id, meta.type, meta.name, meta.logo,
-                                meta.poster, meta.background, video.season, video.episode, video.title,
-                                video.thumbnail, video.overview, 0L)
-                        },
-                    )
-                }
                 val listState = rememberLazyListState()
-                val heroStretchState = rememberHeroStretchState(listState)
                 val density = LocalDensity.current
                 val safeAreaTopPx = with(density) {
                     WindowInsets.statusBars
@@ -1018,31 +951,43 @@ fun MetaDetailsScreen(
                         .calculateTopPadding()
                         .toPx()
                 }
-                val heroHeightPx = rememberSaveable(meta.id) { mutableIntStateOf(0) }
-                // Keep pixel-by-pixel list state reads out of this composition.
-                val detailScrollOffsetPx = remember(listState, heroHeightPx) {
+                val heroHeightPxState = remember(meta.id) { mutableIntStateOf(0) }
+                val heroHeightPx = heroHeightPxState.intValue
+                val detailScrollOffsetProvider = remember(listState, heroHeightPxState) {
                     {
                         if (listState.firstVisibleItemIndex == 0) {
                             listState.firstVisibleItemScrollOffset.toFloat()
                         } else {
-                            heroHeightPx.intValue.toFloat() + listState.firstVisibleItemScrollOffset
+                            heroHeightPxState.intValue.toFloat() + listState.firstVisibleItemScrollOffset
                         }
                     }
                 }
-                val heroScrollOffset = remember(detailScrollOffsetPx) {
-                    { detailScrollOffsetPx().toInt() }
-                }
-                val isHeroCollapsed = remember(listState, heroHeightPx, safeAreaTopPx) {
+                val isScrolledPastHeroHeaderThreshold by remember(
+                    listState,
+                    heroHeightPxState,
+                    safeAreaTopPx,
+                    detailScrollOffsetProvider,
+                ) {
                     derivedStateOf {
-                        if (listState.firstVisibleItemIndex > 0) {
-                            true
-                        } else {
-                            val measuredHeroHeightPx = heroHeightPx.intValue
-                            val thresholdPx = (measuredHeroHeightPx - safeAreaTopPx).coerceAtLeast(0f)
-                            measuredHeroHeightPx > 0 && detailScrollOffsetPx() > thresholdPx
-                        }
+                        val measuredHeroHeightPx = heroHeightPxState.intValue
+                        val thresholdPx = (measuredHeroHeightPx - safeAreaTopPx).coerceAtLeast(0f)
+                        measuredHeroHeightPx > 0 &&
+                            (listState.firstVisibleItemIndex > 0 || detailScrollOffsetProvider() > thresholdPx)
                     }
                 }
+                val isHeroTrailerWithinPlayThreshold by remember(
+                    listState,
+                    heroHeightPxState,
+                    safeAreaTopPx,
+                    detailScrollOffsetProvider,
+                ) {
+                    derivedStateOf {
+                        val measuredHeroHeightPx = heroHeightPxState.intValue
+                        val thresholdPx = (measuredHeroHeightPx - safeAreaTopPx).coerceAtLeast(0f)
+                        measuredHeroHeightPx == 0 || detailScrollOffsetProvider() <= thresholdPx
+                    }
+                }
+                val headerTarget = if (isScrolledPastHeroHeaderThreshold) 1f else 0f
                 val heroTrailerSourceUrl = heroTrailerPlaybackSource
                     ?.videoUrl
                     ?.takeIf { it.isNotBlank() && heroTrailerPlaybackEnabled && !heroTrailerFinished && !isLeavingDetails }
@@ -1051,8 +996,7 @@ fun MetaDetailsScreen(
                     ?.takeIf { heroTrailerSourceUrl != null && it.isNotBlank() }
                 val heroTrailerPlayWhenReady = heroTrailerSourceUrl != null &&
                     !isLeavingDetails &&
-                    !isHeroCollapsed.value
-                val headerTarget = if (isHeroCollapsed.value) 1f else 0f
+                    isHeroTrailerWithinPlayThreshold
                 val headerProgressState = animateFloatAsState(
                     targetValue = headerTarget,
                     animationSpec = tween(
@@ -1064,54 +1008,23 @@ fun MetaDetailsScreen(
                 val headerProgressProvider = remember(headerProgressState) {
                     { headerProgressState.value }
                 }
-                val animatedShowHeroBackButton by remember(headerProgressState) {
+                val showHeroBackButton by remember(headerProgressState) {
                     derivedStateOf { headerProgressState.value <= 0.05f }
-                }
-                val showHeroBackButton = if (isDesktop) {
-                    !isHeroCollapsed.value
-                } else {
-                    animatedShowHeroBackButton
                 }
                 val headerInteractive by remember(headerProgressState) {
                     derivedStateOf { headerProgressState.value > 0.05f }
                 }
 
-                val onShuffleClick: (() -> Unit)? = if (showShuffleButton) {
-                    {
-                        if (shuffleSettings.enabled) saveShuffle(shuffleSettings.copy(enabled = false)) else showShuffle = true
-                    }
-                } else {
-                    null
-                }
-
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                     val colorScheme = MaterialTheme.colorScheme
-                    val screenMaxWidth = maxWidth
-                    val useTabletLayout = !isDesktop && minOf(maxWidth, maxHeight) >= 600.dp
-                    val isTablet = useTabletLayout || screenMaxWidth >= 720.dp
-                    val isSectionEnabled = { key: MetaScreenSectionKey ->
-                        metaScreenSettingsUiState.items.any { it.key == key && it.enabled }
-                    }
-                    val useDesktopDetailLayout = isDesktop && screenMaxWidth >= 1000.dp
-                    val viewportHeight = maxHeight
-                    val desktopPageHorizontalPadding = desktopPageHorizontalPaddingForWidth(screenMaxWidth.value)
-                    val contentHorizontalPadding = if (isDesktop) {
-                        desktopPageHorizontalPadding
-                    } else if (isTablet) {
-                        32.dp
-                    } else {
-                        18.dp
-                    }
-                    val contentMaxWidth = detailTabletContentMaxWidth(screenMaxWidth, isTablet)
+                    val isTablet = maxWidth >= 720.dp
+                    val contentHorizontalPadding = if (isTablet) 32.dp else 18.dp
+                    val contentMaxWidth = detailTabletContentMaxWidth(maxWidth, isTablet)
                     val backdropUrl = meta.background ?: meta.poster
                     val backgroundMode = metaScreenSettingsUiState.backgroundMode
                     val dominantColorEnabled = backgroundMode == MetaScreenBackgroundMode.DominantColor &&
                         deferredMetaWorkAllowed &&
                         !backdropUrl.isNullOrBlank()
-                    val adaptiveScrollbarColorEnabled = useDesktopDetailLayout &&
-                        deferredMetaWorkAllowed &&
-                        !backdropUrl.isNullOrBlank()
-                    val backdropColorExtractionEnabled = dominantColorEnabled || adaptiveScrollbarColorEnabled
                     var dominantBackdropPainter by remember(meta.id, backdropUrl) {
                         mutableStateOf<Painter?>(null)
                     }
@@ -1126,10 +1039,10 @@ fun MetaDetailsScreen(
                         defaultColor = colorScheme.background,
                         defaultOnColor = colorScheme.onBackground,
                     )
-                    LaunchedEffect(backdropColorExtractionEnabled, dominantBackdropImageBitmap, dominantBackdropPainter) {
+                    LaunchedEffect(dominantColorEnabled, dominantBackdropImageBitmap, dominantBackdropPainter) {
                         val imageBitmap = dominantBackdropImageBitmap
                         val painter = dominantBackdropPainter
-                        if (backdropColorExtractionEnabled) {
+                        if (dominantColorEnabled) {
                             when {
                                 imageBitmap != null -> runCatching {
                                     dominantImageBitmapColorState.updateFrom(imageBitmap)
@@ -1159,40 +1072,12 @@ fun MetaDetailsScreen(
                         label = "detail_dominant_backdrop_color",
                     )
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .detailsContentReveal(metaScreenSettingsUiState.posterTransitionEnabled),
-                    ) {
-                        if (useTabletLayout) {
-                            TabletDetailBackdrop(
-                                meta = meta,
-                                cinematic = backgroundMode == MetaScreenBackgroundMode.Cinematic,
-                                scrollOffsetPx = detailScrollOffsetPx,
-                                heroHeightPx = { heroHeightPx.intValue },
-                                heroTrailerSourceUrl = heroTrailerSourceUrl,
-                                heroTrailerSourceAudioUrl = heroTrailerSourceAudioUrl,
-                                heroTrailerReady = heroTrailerReady,
-                                heroTrailerPlayWhenReady = { heroTrailerPlayWhenReady },
-                                heroTrailerMuted = heroTrailerMuted,
-                                heroGradientColor = dominantBackdropColor.takeIf { dominantColorEnabled },
-                                onBackdropLoaded = { painter, imageBitmap ->
-                                    dominantBackdropPainter = painter
-                                    dominantBackdropImageBitmap = imageBitmap
-                                },
-                                onHeroTrailerReady = {
-                                    if (!heroTrailerFinished) heroTrailerReady = true
-                                },
-                                onHeroTrailerFinished = {
-                                    heroTrailerReady = false
-                                    heroTrailerFinished = true
-                                },
-                            )
-                        } else when (backgroundMode) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        when (backgroundMode) {
                             MetaScreenBackgroundMode.Normal -> Unit
                             MetaScreenBackgroundMode.Cinematic -> if (deferredMetaWorkAllowed && backdropUrl != null) {
                                 AsyncImage(
-                                    model = if (isDesktop) originalTmdbImageUrl(backdropUrl) else backdropUrl,
+                                    model = backdropUrl,
                                     contentDescription = null,
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -1202,11 +1087,7 @@ fun MetaDetailsScreen(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .background(
-                                            colorScheme.background.copy(
-                                                alpha = if (isDesktop) 0.48f else 0.92f,
-                                            ),
-                                        ),
+                                        .background(colorScheme.background.copy(alpha = 0.92f)),
                                 )
                             }
                             MetaScreenBackgroundMode.DominantColor -> if (deferredMetaWorkAllowed) {
@@ -1217,377 +1098,132 @@ fun MetaDetailsScreen(
                                 )
                             }
                         }
-                        if (useDesktopDetailLayout) {
-                            DesktopDetailBackdrop(
-                                meta = meta,
-                                viewportHeight = viewportHeight,
-                                heroTrailerSourceUrl = heroTrailerSourceUrl,
-                                heroTrailerSourceAudioUrl = heroTrailerSourceAudioUrl,
-                                heroTrailerReady = heroTrailerReady,
-                                heroTrailerPlayWhenReady = heroTrailerPlayWhenReady,
-                                heroTrailerMuted = heroTrailerMuted,
-                                heroGradientColor = dominantBackdropColor.takeIf { dominantColorEnabled },
-                                onBackdropLoaded = { painter -> dominantBackdropPainter = painter },
-                                onHeroTrailerReady = {
-                                    if (!heroTrailerFinished) heroTrailerReady = true
-                                },
-                                onHeroTrailerEnded = {
-                                    heroTrailerReady = false
-                                    heroTrailerFinished = true
-                                },
-                                onHeroTrailerError = {
-                                    heroTrailerReady = false
-                                    heroTrailerFinished = true
-                                },
-                            )
-
-                            if (backgroundMode == MetaScreenBackgroundMode.Cinematic) {
-                                DesktopDetailBackdrop(
-                                    meta = meta,
-                                    viewportHeight = viewportHeight,
-                                    heroTrailerSourceUrl = null,
-                                    heroTrailerSourceAudioUrl = null,
-                                    heroTrailerReady = false,
-                                    heroTrailerPlayWhenReady = false,
-                                    heroTrailerMuted = true,
-                                    blurBackdrop = true,
-                                    onHeroTrailerReady = {},
-                                    onHeroTrailerEnded = {},
-                                    onHeroTrailerError = {},
-                                    modifier = Modifier
-                                        .zIndex(0.25f)
-                                        .graphicsLayer {
-                                            alpha = detailScrolledBackgroundProgress(
-                                                scrollOffsetPx = detailScrollOffsetPx(),
-                                                heroHeightPx = heroHeightPx.intValue,
-                                            )
-                                        },
-                                )
-                            }
-
-                            val scrolledBackgroundColor = if (dominantColorEnabled) {
-                                dominantBackdropColor
-                            } else {
-                                colorScheme.background
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .zIndex(0.5f)
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        alpha = detailScrolledBackgroundAlpha(
-                                            scrollOffsetPx = detailScrollOffsetPx(),
-                                            heroHeightPx = heroHeightPx.intValue,
-                                            maxAlpha = if (backgroundMode == MetaScreenBackgroundMode.Cinematic) {
-                                                DetailScrolledBackgroundCinematicMaxAlpha
-                                            } else {
-                                                DetailScrolledBackgroundDefaultMaxAlpha
-                                            },
-                                        )
-                                    }
-                                    .background(scrolledBackgroundColor),
-                            )
-                        }
                         LazyColumn(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .nestedScroll(heroStretchState.nestedScrollConnection)
                                 .zIndex(1f),
                         ) {
-                            if (useDesktopDetailLayout) {
-                                item(
-                                    key = "detail-desktop-hero",
-                                    contentType = "detail-hero",
-                                ) {
-                                    DesktopDetailHero(
-                                        meta = meta,
-                                        showOverallRatings = metaScreenSettingsUiState.showOverallRatings,
-                                        isMdbListActive = mdbListSettings.isActive,
-                                        playButtonLabel = playButtonLabel,
-                                        isPrimaryPlayEnabled = isPrimaryPlayEnabled,
-                                        isSaved = isSaved,
-                                        isWatched = isWatched,
-                                        onHeightChanged = { heroHeightPx.intValue = it },
-                                        heroTrailerSourceUrl = heroTrailerSourceUrl,
-                                        heroTrailerReady = heroTrailerReady,
-                                        heroTrailerMuted = heroTrailerMuted,
-                                        onHeroTrailerMuteToggle = {
-                                            HeroTrailerAudioState.toggleMuted()
-                                        },
-                                        onPlayClick = onPrimaryPlayClick,
-                                        onPlayLongClick = if (showManualPlayOption) onPrimaryPlayLongClick else null,
-                                        onShuffleClick = if (showShuffleButton) ({
-                                            if (shuffleSettings.enabled) saveShuffle(shuffleSettings.copy(enabled = false)) else showShuffle = true
-                                        }) else null,
-                                        shuffleEnabled = shuffleSettings.enabled,
-                                        onWatchedClick = toggleWatched,
-                                        onSaveClick = toggleSaved,
-                                        onSaveLongClick = openLibraryListPicker,
-                                    )
-                                }
-                                configuredMetaSectionItems(
-                                    settings = metaScreenSettingsUiState.copy(
-                                        items = metaScreenSettingsUiState.items.filterNot {
-                                            it.key in desktopHeroOwnedMetaSectionKeys
-                                        },
-                                    ),
-                                    isMdbListActive = mdbListSettings.isActive,
-                                    meta = meta,
-                                    isTablet = true,
-                                    contentHorizontalPadding = desktopPageHorizontalPadding,
-                                    contentMaxWidth = Dp.Unspecified,
-                                    playButtonLabel = playButtonLabel,
-                                    isPrimaryPlayEnabled = isPrimaryPlayEnabled,
-                                    isSaved = isSaved,
-                                    isWatched = isWatched,
-                                    onPrimaryPlayClick = onPrimaryPlayClick,
-                                    onShuffleClick = if (showShuffleButton) ({
-                                        if (shuffleSettings.enabled) saveShuffle(shuffleSettings.copy(enabled = false)) else showShuffle = true
-                                    }) else null,
-                                    shuffleEnabled = shuffleSettings.enabled,
-                                    onPrimaryPlayLongClick = onPrimaryPlayLongClick,
-                                    onSaveClick = toggleSaved,
-                                    onSaveLongClick = openLibraryListPicker,
-                                    onWatchedClick = toggleWatched,
-                                    showManualPlayOption = showManualPlayOption,
-                                    preferredEpisodeSeasonNumber = seriesAction?.seasonNumber,
-                                    preferredEpisodeNumber = seriesAction?.episodeNumber,
-                                    hasProductionSection = hasProductionSection,
-                                    hasTrailersSection = hasTrailersSection,
-                                    hasEpisodes = hasEpisodes,
-                                    hasAdditionalInfoSection = hasAdditionalInfoSection,
-                                    hasCollectionSection = hasCollectionSection,
-                                    hasMoreLikeThisSection = hasMoreLikeThisSection,
-                                    shouldShowComments = shouldShowComments,
-                                    comments = comments,
-                                    isCommentsLoading = isCommentsLoading,
-                                    isCommentsLoadingMore = isCommentsLoadingMore,
-                                    commentsCurrentPage = commentsCurrentPage,
-                                    commentsPageCount = commentsPageCount,
-                                    commentsError = commentsError,
-                                    episodeImdbRatings = episodeImdbRatings,
-                                    episodeListGroupedEpisodes = episodeListGroupedEpisodes,
-                                    episodeListSeasons = episodeListSeasons,
-                                    episodeListCurrentSeason = currentEpisodeListSeason,
-                                    onEpisodeListSeasonSelect = { selectedEpisodeListSeason = it },
-                                    onRetryComments = {
-                                        detailsScope.launch {
-                                            isCommentsLoading = true
-                                            commentsError = null
-                                            try {
-                                                val result = TraktCommentsRepository.getCommentsPage(meta, page = 1, forceRefresh = true)
-                                                comments = result.items
-                                                commentsCurrentPage = result.currentPage
-                                                commentsPageCount = result.pageCount
-                                            } catch (e: Exception) {
-                                                commentsError = e.message ?: getString(Res.string.details_comments_load_failed)
-                                            }
-                                            isCommentsLoading = false
-                                        }
-                                    },
-                                    onLoadMoreComments = {
-                                        detailsScope.launch {
-                                            isCommentsLoadingMore = true
-                                            try {
-                                                val nextPage = commentsCurrentPage + 1
-                                                val result = TraktCommentsRepository.getCommentsPage(meta, page = nextPage)
-                                                val existingIds = comments.map { it.id }.toSet()
-                                                val newComments = result.items.filter { it.id !in existingIds }
-                                                comments = comments + newComments
-                                                commentsCurrentPage = result.currentPage
-                                                commentsPageCount = result.pageCount
-                                            } catch (_: Exception) { }
-                                            isCommentsLoadingMore = false
-                                        }
-                                    },
-                                    onCommentClick = { review -> selectedComment = review },
-                                    onTrailerClick = resolveTrailer,
-                                    progressByVideoId = progressByVideoId,
-                                    watchedKeys = watchedUiState.watchedKeys,
-                                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
-                                    blurUnwatchedEpisodes = metaScreenSettingsUiState.blurUnwatchedEpisodes,
-                                    onEpisodeClick = onEpisodePlayClick,
-                                    onEpisodeLongPress = { video ->
-                                        selectedEpisodeZoomAnchor = PosterZoomAnchorHolder.consume()
-                                        selectedEpisodeForActions = video
-                                    },
-                                    onSeasonLongPress = { season -> selectedSeasonForActions = season },
-                                    onOpenMeta = onOpenMeta,
-                                    onCastClick = onCastClick,
-                                    onCompanyClick = onCompanyClick,
-                                    sharedTransitionScope = sharedTransitionScope,
-                                    animatedVisibilityScope = animatedVisibilityScope,
-                                )
-                            } else {
-                                item(
-                                    key = "detail-hero",
-                                    contentType = "detail-hero",
-                                ) {
-                                    if (useTabletLayout) {
-                                        TabletDetailHero(
-                                            meta = meta,
-                                            showOverview = isSectionEnabled(MetaScreenSectionKey.OVERVIEW),
-                                            showOverallRatings = metaScreenSettingsUiState.showOverallRatings,
-                                            isMdbListActive = mdbListSettings.isActive,
-                                            horizontalPadding = contentHorizontalPadding,
-                                            heroTrailerSourceUrl = heroTrailerSourceUrl,
-                                            heroTrailerReady = heroTrailerReady,
-                                            heroTrailerMuted = heroTrailerMuted,
-                                            onHeroTrailerMuteToggle = HeroTrailerAudioState::toggleMuted,
-                                            onHeightChanged = { heroHeightPx.intValue = it },
-                                            actions = if (isSectionEnabled(MetaScreenSectionKey.ACTIONS)) {
-                                                {
-                                                    DetailActions(
-                                                        playLabel = playButtonLabel,
-                                                        playEnabled = isPrimaryPlayEnabled,
-                                                        isSaved = isSaved,
-                                                        isWatched = isWatched,
-                                                        isTablet = true,
-                                                        shuffleEnabled = shuffleSettings.enabled,
-                                                        onPlayClick = onPrimaryPlayClick,
-                                                        onPlayLongClick = if (showManualPlayOption) onPrimaryPlayLongClick else null,
-                                                        onShuffleClick = onShuffleClick,
-                                                        onWatchedClick = toggleWatched,
-                                                        onSaveClick = toggleSaved,
-                                                        onSaveLongClick = openLibraryListPicker,
-                                                    )
-                                                }
-                                            } else {
-                                                null
-                                            },
-                                        )
-                                    } else {
-                                        DetailHero(
-                                        meta = meta,
-                                        isTablet = isTablet,
-                                        contentMaxWidth = contentMaxWidth,
-                                        viewportHeight = viewportHeight,
-                                        scrollOffset = heroScrollOffset,
-                                        stretchPx = { heroStretchState.stretchPx },
-                                        onHeightChanged = { heroHeightPx.intValue = it },
-                                        heroTrailerSourceUrl = heroTrailerSourceUrl,
-                                        heroTrailerSourceAudioUrl = heroTrailerSourceAudioUrl,
-                                        heroTrailerReady = heroTrailerReady,
-                                        heroTrailerPlayWhenReady = { heroTrailerPlayWhenReady },
-                                        heroTrailerMuted = heroTrailerMuted,
-                                        heroGradientColor = dominantBackdropColor.takeIf { dominantColorEnabled },
-                                        onBackdropLoaded = { painter, imageBitmap ->
-                                            dominantBackdropPainter = painter
-                                            dominantBackdropImageBitmap = imageBitmap
-                                        },
-                                        onHeroTrailerMuteToggle = {
-                                            HeroTrailerAudioState.toggleMuted()
-                                        },
-                                        onHeroTrailerReady = {
-                                            if (!heroTrailerFinished) {
-                                                heroTrailerReady = true
-                                            }
-                                        },
-                                        onHeroTrailerEnded = {
-                                            heroTrailerReady = false
-                                            heroTrailerFinished = true
-                                        },
-                                        onHeroTrailerError = {
-                                            heroTrailerReady = false
-                                            heroTrailerFinished = true
-                                        },
-                                    )
-                                    }
-                                }
-
-                                configuredMetaSectionItems(
-                                    settings = if (useTabletLayout) {
-                                        metaScreenSettingsUiState.copy(
-                                            items = metaScreenSettingsUiState.items.filterNot { it.key in tabletHeroSectionKeys },
-                                        )
-                                    } else {
-                                        metaScreenSettingsUiState
-                                    },
-                                    isMdbListActive = mdbListSettings.enabled && mdbListSettings.hasApiKey,
+                            item(
+                                key = "detail-hero",
+                                contentType = "detail-hero",
+                            ) {
+                                DetailHero(
                                     meta = meta,
                                     isTablet = isTablet,
-                                    contentHorizontalPadding = contentHorizontalPadding,
-                                    contentMaxWidth = if (isTablet && !useTabletLayout) contentMaxWidth else Dp.Unspecified,
-                                    playButtonLabel = playButtonLabel,
-                                    isPrimaryPlayEnabled = isPrimaryPlayEnabled,
-                                    isSaved = isSaved,
-                                    isWatched = isWatched,
-                                    onShuffleClick = if (showShuffleButton) ({
-                                        if (shuffleSettings.enabled) saveShuffle(shuffleSettings.copy(enabled = false)) else showShuffle = true
-                                    }) else null,
-                                    shuffleEnabled = shuffleSettings.enabled,
-                                    onPrimaryPlayClick = onPrimaryPlayClick,
-                                    onPrimaryPlayLongClick = onPrimaryPlayLongClick,
-                                    onSaveClick = toggleSaved,
-                                    onSaveLongClick = openLibraryListPicker,
-                                    onWatchedClick = toggleWatched,
-                                    showManualPlayOption = showManualPlayOption,
-                                    preferredEpisodeSeasonNumber = seriesAction?.seasonNumber,
-                                    preferredEpisodeNumber = seriesAction?.episodeNumber,
-                                    hasProductionSection = hasProductionSection,
-                                    hasTrailersSection = hasTrailersSection,
-                                    hasEpisodes = hasEpisodes,
-                                    hasAdditionalInfoSection = hasAdditionalInfoSection,
-                                    hasCollectionSection = hasCollectionSection,
-                                    hasMoreLikeThisSection = hasMoreLikeThisSection,
-                                    shouldShowComments = shouldShowComments,
-                                    comments = comments,
-                                    isCommentsLoading = isCommentsLoading,
-                                    isCommentsLoadingMore = isCommentsLoadingMore,
-                                    commentsCurrentPage = commentsCurrentPage,
-                                    commentsPageCount = commentsPageCount,
-                                    commentsError = commentsError,
-                                    episodeImdbRatings = episodeImdbRatings,
-                                    episodeListGroupedEpisodes = episodeListGroupedEpisodes,
-                                    episodeListSeasons = episodeListSeasons,
-                                    episodeListCurrentSeason = currentEpisodeListSeason,
-                                    onEpisodeListSeasonSelect = { selectedEpisodeListSeason = it },
-                                    onRetryComments = {
-                                        detailsScope.launch {
-                                            isCommentsLoading = true
-                                            commentsError = null
-                                            try {
-                                                val result = TraktCommentsRepository.getCommentsPage(meta, page = 1, forceRefresh = true)
-                                                comments = result.items
-                                                commentsCurrentPage = result.currentPage
-                                                commentsPageCount = result.pageCount
-                                            } catch (e: Exception) {
-                                                commentsError = e.message ?: getString(Res.string.details_comments_load_failed)
-                                            }
-                                            isCommentsLoading = false
+                                    contentMaxWidth = contentMaxWidth,
+                                    scrollOffsetProvider = detailScrollOffsetProvider,
+                                    onHeightChanged = { heroHeightPxState.intValue = it },
+                                    heroTrailerSourceUrl = heroTrailerSourceUrl,
+                                    heroTrailerSourceAudioUrl = heroTrailerSourceAudioUrl,
+                                    heroTrailerReady = heroTrailerReady,
+                                    heroTrailerPlayWhenReady = heroTrailerPlayWhenReady,
+                                    heroTrailerMuted = heroTrailerMuted,
+                                    heroGradientColor = dominantBackdropColor.takeIf { dominantColorEnabled },
+                                    onBackdropLoaded = { painter, imageBitmap ->
+                                        dominantBackdropPainter = painter
+                                        dominantBackdropImageBitmap = imageBitmap
+                                    },
+                                    onHeroTrailerMuteToggle = {
+                                        HeroTrailerAudioState.toggleMuted()
+                                    },
+                                    onHeroTrailerReady = {
+                                        if (!heroTrailerFinished) {
+                                            heroTrailerReady = true
                                         }
                                     },
-                                    onLoadMoreComments = {
-                                        detailsScope.launch {
-                                            isCommentsLoadingMore = true
-                                            try {
-                                                val nextPage = commentsCurrentPage + 1
-                                                val result = TraktCommentsRepository.getCommentsPage(meta, page = nextPage)
-                                                val existingIds = comments.map { it.id }.toSet()
-                                                val newComments = result.items.filter { it.id !in existingIds }
-                                                comments = comments + newComments
-                                                commentsCurrentPage = result.currentPage
-                                                commentsPageCount = result.pageCount
-                                            } catch (_: Exception) { }
-                                            isCommentsLoadingMore = false
-                                        }
+                                    onHeroTrailerEnded = {
+                                        heroTrailerReady = false
+                                        heroTrailerFinished = true
                                     },
-                                    onCommentClick = { review -> selectedComment = review },
-                                    onTrailerClick = resolveTrailer,
-                                    progressByVideoId = progressByVideoId,
-                                    watchedKeys = watchedUiState.watchedKeys,
-                                    blurUnwatchedEpisodes = metaScreenSettingsUiState.blurUnwatchedEpisodes,
-                                    onEpisodeClick = onEpisodePlayClick,
-                                    onEpisodeLongPress = { video -> selectedEpisodeForActions = video },
-                                    onSeasonLongPress = { season -> selectedSeasonForActions = season },
-                                    onOpenMeta = onOpenMeta,
-                                    onCastClick = onCastClick,
-                                    onCompanyClick = onCompanyClick,
-                                    sharedTransitionScope = sharedTransitionScope,
-                                    animatedVisibilityScope = animatedVisibilityScope,
+                                    onHeroTrailerError = {
+                                        heroTrailerReady = false
+                                        heroTrailerFinished = true
+                                    },
                                 )
                             }
+
+                            configuredMetaSectionItems(
+                                settings = metaScreenSettingsUiState,
+                                meta = meta,
+                                isTablet = isTablet,
+                                contentHorizontalPadding = contentHorizontalPadding,
+                                contentMaxWidth = if (isTablet) contentMaxWidth else Dp.Unspecified,
+                                playButtonLabel = playButtonLabel,
+                                isSaved = isSaved,
+                                isWatched = isWatched,
+                                onPrimaryPlayClick = onPrimaryPlayClick,
+                                onPrimaryPlayLongClick = onPrimaryPlayLongClick,
+                                featuredAction = randomEpisodeAction,
+                                onSaveClick = toggleSaved,
+                                onSaveLongClick = openLibraryListPicker,
+                                onWatchedClick = toggleWatched,
+                                showManualPlayOption = showManualPlayOption,
+                                preferredEpisodeSeasonNumber = seriesAction?.seasonNumber,
+                                preferredEpisodeNumber = seriesAction?.episodeNumber,
+                                hasProductionSection = hasProductionSection,
+                                hasTrailersSection = hasTrailersSection,
+                                hasEpisodes = hasEpisodes,
+                                hasAdditionalInfoSection = hasAdditionalInfoSection,
+                                hasCollectionSection = hasCollectionSection,
+                                hasMoreLikeThisSection = hasMoreLikeThisSection,
+                                shouldShowComments = shouldShowComments,
+                                comments = comments,
+                                isCommentsLoading = isCommentsLoading,
+                                isCommentsLoadingMore = isCommentsLoadingMore,
+                                commentsCurrentPage = commentsCurrentPage,
+                                commentsPageCount = commentsPageCount,
+                                commentsError = commentsError,
+                                episodeImdbRatings = episodeImdbRatings,
+                                episodeListGroupedEpisodes = episodeListGroupedEpisodes,
+                                episodeListSeasons = episodeListSeasons,
+                                episodeListCurrentSeason = currentEpisodeListSeason,
+                                onEpisodeListSeasonSelect = { selectedEpisodeListSeason = it },
+                                onRetryComments = {
+                                    detailsScope.launch {
+                                        isCommentsLoading = true
+                                        commentsError = null
+                                        try {
+                                            val result = TraktCommentsRepository.getCommentsPage(meta, page = 1, forceRefresh = true)
+                                            comments = result.items
+                                            commentsCurrentPage = result.currentPage
+                                            commentsPageCount = result.pageCount
+                                        } catch (e: Exception) {
+                                            commentsError = e.message ?: getString(Res.string.details_comments_load_failed)
+                                        }
+                                        isCommentsLoading = false
+                                    }
+                                },
+                                onLoadMoreComments = {
+                                    detailsScope.launch {
+                                        isCommentsLoadingMore = true
+                                        try {
+                                            val nextPage = commentsCurrentPage + 1
+                                            val result = TraktCommentsRepository.getCommentsPage(meta, page = nextPage)
+                                            val existingIds = comments.map { it.id }.toSet()
+                                            val newComments = result.items.filter { it.id !in existingIds }
+                                            comments = comments + newComments
+                                            commentsCurrentPage = result.currentPage
+                                            commentsPageCount = result.pageCount
+                                        } catch (_: Exception) { }
+                                        isCommentsLoadingMore = false
+                                    }
+                                },
+                                onCommentClick = { review -> selectedComment = review },
+                                onTrailerClick = resolveTrailer,
+                                progressByVideoId = progressByVideoId,
+                                watchedKeys = watchedUiState.watchedKeys,
+                                blurUnwatchedEpisodes = metaScreenSettingsUiState.blurUnwatchedEpisodes,
+                                showEpisodeRatings = metaScreenSettingsUiState.showEpisodeRatings,
+                                onEpisodeClick = onEpisodePlayClick,
+                                onEpisodeLongPress = { video -> selectedEpisodeForActions = video },
+                                onSeasonLongPress = { season -> selectedSeasonForActions = season },
+                                onOpenMeta = onOpenMeta,
+                                onCastClick = onCastClick,
+                                onCompanyClick = onCompanyClick,
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                            )
 
                             item(
                                 key = "detail-bottom-spacer",
@@ -1596,19 +1232,8 @@ fun MetaDetailsScreen(
                                 Spacer(modifier = Modifier.height(nuvioSafeBottomPadding(32.dp)))
                             }
                         }
-                        NuvioDesktopVerticalScrollbar(
-                            state = listState,
-                            backgroundColor = extractedDominantColor.takeIf { adaptiveScrollbarColorEnabled },
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .fillMaxHeight()
-                                .padding(vertical = 8.dp, horizontal = 4.dp)
-                                .zIndex(2f),
-                        )
 
-                        if (!useDesktopDetailLayout && !useTabletLayout && backgroundMode.usesBackdropBackground &&
-                            deferredMetaWorkAllowed && heroHeightPx.intValue > 0
-                        ) {
+                        if (backgroundMode.usesBackdropBackground && deferredMetaWorkAllowed && heroHeightPx > 0) {
                             val blendColor = dominantBackdropColor.takeIf { dominantColorEnabled }
                                 ?: colorScheme.background
                             Box(
@@ -1617,7 +1242,7 @@ fun MetaDetailsScreen(
                                     .fillMaxWidth()
                                     .height(132.dp)
                                     .graphicsLayer {
-                                        translationY = heroHeightPx.intValue.toFloat() - detailScrollOffsetPx()
+                                        translationY = heroHeightPx.toFloat() - detailScrollOffsetProvider()
                                     }
                                     .background(
                                         Brush.verticalGradient(
@@ -1632,7 +1257,7 @@ fun MetaDetailsScreen(
                             )
                         }
 
-                        if (!isDesktop && !useDesktopDetailLayout && showHeroBackButton) {
+                        if (showHeroBackButton) {
                             NuvioBackButton(
                                 onClick = onBackFromDetails,
                                 modifier = Modifier.padding(
@@ -1644,37 +1269,47 @@ fun MetaDetailsScreen(
                             )
                         }
 
-                        if (isDesktop) {
-                            NuvioBackButton(
-                                onClick = onBackFromDetails,
+                        DetailFloatingHeader(
+                            meta = meta,
+                            isSaved = isSaved,
+                            progressProvider = headerProgressProvider,
+                            interactive = headerInteractive,
+                            backgroundColor = dominantBackdropColor.takeIf { dominantColorEnabled },
+                            onBack = onBackFromDetails,
+                            onToggleSaved = toggleSaved,
+                            modifier = Modifier.zIndex(2f),
+                        )
+
+                        if (aiAssistantSettings.enabled && supportsAiAssistant) {
+                            SmallFloatingActionButton(
+                                onClick = { showAiAssistant = true },
                                 modifier = Modifier
-                                    .statusBarsPadding()
-                                    .padding(start = desktopPageHorizontalPadding, top = 32.dp)
-                                    .zIndex(2f),
-                                containerColor = Color.Black.copy(alpha = 0.34f),
-                                showContainerOnDesktop = true,
-                                contentColor = MaterialTheme.colorScheme.onBackground,
-                                buttonSize = 48.dp,
-                                iconSize = 24.dp,
-                            )
+                                    .align(Alignment.BottomEnd)
+                                    .padding(
+                                        end = 18.dp,
+                                        bottom = nuvioSafeBottomPadding(18.dp),
+                                    )
+                                    .zIndex(3f),
+                                shape = androidx.compose.foundation.shape.CircleShape,
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AutoAwesome,
+                                    contentDescription = stringResource(Res.string.ai_chat_title),
+                                )
+                            }
                         }
 
-                        if (!isDesktop) {
-                            DetailFloatingHeader(
+                        if (showAiAssistant) {
+                            AiAssistantSheet(
                                 meta = meta,
-                                isSaved = isSaved,
-                                progressProvider = headerProgressProvider,
-                                interactive = headerInteractive,
-                                backgroundColor = dominantBackdropColor.takeIf { dominantColorEnabled },
-                                onBack = onBackFromDetails,
-                                onToggleSaved = toggleSaved,
-                                modifier = Modifier.zIndex(2f),
+                                settings = aiAssistantSettings,
+                                onDismiss = { showAiAssistant = false },
                             )
                         }
 
-                        selectedEpisodeForActions
-                            ?.takeIf { selectedEpisodeZoomAnchor == null }
-                            ?.let { selectedEpisode ->
+                        selectedEpisodeForActions?.let { selectedEpisode ->
                             val isSelectedEpisodeWatched = remember(meta, selectedEpisode, watchedUiState.watchedKeys, progressByVideoId) {
                                 isEpisodeWatchedForActions(
                                     meta = meta,
@@ -1827,7 +1462,7 @@ fun MetaDetailsScreen(
                             )
                         }
 
-                        TrackingListPickerDialog(
+                        TraktListPickerDialog(
                             visible = showLibraryListPicker,
                             title = meta.name,
                             tabs = pickerTabs,
@@ -1835,11 +1470,9 @@ fun MetaDetailsScreen(
                             isPending = pickerPending,
                             errorMessage = pickerError,
                             onToggle = { listKey ->
-                                pickerMembership = toggleTrackingLibraryMembership(
-                                    tabs = pickerTabs,
-                                    membership = pickerMembership,
-                                    key = listKey,
-                                )
+                                pickerMembership = pickerMembership.toMutableMap().apply {
+                                    this[listKey] = !(this[listKey] == true)
+                                }
                             },
                             onDismiss = {
                                 if (!pickerPending) {
@@ -1850,50 +1483,19 @@ fun MetaDetailsScreen(
                                 detailsScope.launch {
                                     pickerPending = true
                                     pickerError = null
-                                    val item = meta.toLibraryItem(savedAtEpochMs = 0L)
-                                    val desiredMembership = pickerMembership.toMap()
-                                    val applyMembership: suspend (Set<TrackingProviderId>) ->
-                                        TrackingMembershipApplyResult = { confirmedProviders ->
+                                    runCatching {
                                         LibraryRepository.applyMembershipChanges(
-                                            item = item,
-                                            desiredMembership = desiredMembership,
-                                            confirmedRemovalProviders = confirmedProviders,
+                                            item = meta.toLibraryItem(savedAtEpochMs = 0L),
+                                            desiredMembership = pickerMembership,
                                         )
-                                    }
-                                    val completeMembershipUpdate: suspend (TrackingMembershipApplyResult) -> Unit = { result ->
-                                        showTrackingMembershipRewriteFeedback(result)
+                                    }.onSuccess {
                                         showLibraryListPicker = false
+                                    }.onFailure { error ->
+                                        pickerError = error.message ?: getString(Res.string.trakt_lists_update_failed)
                                     }
-                                    executeTrackingMembershipOperation(
-                                        operation = { applyMembership(emptySet()) },
-                                        onSuccess = { result ->
-                                            if (result.requiresRemovalConfirmation) {
-                                                pendingTrackingRemoval = PendingTrackingMembershipRemoval(
-                                                    itemTitle = item.name,
-                                                    confirmations = result.requiredRemovalConfirmations,
-                                                    retry = applyMembership,
-                                                    onApplied = completeMembershipUpdate,
-                                                    onFailure = { error ->
-                                                        pickerError = error.message
-                                                            ?: trackingListsUpdateFailedMessage
-                                                    },
-                                                )
-                                            } else {
-                                                completeMembershipUpdate(result)
-                                            }
-                                        },
-                                        onFailure = { error ->
-                                            pickerError = error.message ?: trackingListsUpdateFailedMessage
-                                        },
-                                    )
                                     pickerPending = false
                                 }
                             },
-                        )
-
-                        TrackingMembershipRemovalConfirmationHost(
-                            pending = pendingTrackingRemoval,
-                            onPendingChange = { pendingTrackingRemoval = it },
                         )
 
                         selectedComment?.let { comment ->
@@ -1939,180 +1541,14 @@ fun MetaDetailsScreen(
         }
 
         if (displayedMeta == null) {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val loadingBackButtonStartPadding = if (isDesktop) {
-                    desktopPageHorizontalPaddingForWidth(maxWidth.value)
-                } else {
-                    12.dp
-                }
-                val loadingBackButtonTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + if (isDesktop) {
-                    32.dp
-                } else {
-                    8.dp
-                }
-                NuvioBackButton(
-                    onClick = onBack,
-                    modifier = Modifier.padding(
-                        start = loadingBackButtonStartPadding,
-                        top = loadingBackButtonTopPadding,
-                    ),
-                    containerColor = if (isDesktop) Color.Black.copy(alpha = 0.34f) else Color.Transparent,
-                    showContainerOnDesktop = isDesktop,
-                    contentColor = MaterialTheme.colorScheme.onBackground,
-                    buttonSize = if (isDesktop) 48.dp else 40.dp,
-                    iconSize = 24.dp,
-                )
-            }
-        }
-        }
-
-        val meta = displayedMeta
-        val selectedEpisode = selectedEpisodeForActions
-        val zoomAnchor = selectedEpisodeZoomAnchor
-        if (meta != null && selectedEpisode != null && zoomAnchor != null) {
-            val todayIsoDate = CurrentDateProvider.todayIsoDate()
-            val isSelectedEpisodeWatched = remember(meta, selectedEpisode, watchedUiState.watchedKeys, progressByVideoId) {
-                isEpisodeWatchedForActions(
-                    meta = meta,
-                    episode = selectedEpisode,
-                    watchedKeys = watchedUiState.watchedKeys,
-                    progressByVideoId = progressByVideoId,
-                )
-            }
-            val previousEpisodes = remember(meta, selectedEpisode, todayIsoDate) {
-                meta.previousReleasedEpisodesBefore(
-                    target = selectedEpisode,
-                    todayIsoDate = todayIsoDate,
-                )
-            }
-            val seasonEpisodes = remember(meta, selectedEpisode, todayIsoDate) {
-                meta.releasedEpisodesForSeason(
-                    seasonNumber = selectedEpisode.season,
-                    todayIsoDate = todayIsoDate,
-                )
-            }
-            val arePreviousEpisodesWatched = remember(previousEpisodes, watchedUiState.watchedKeys, progressByVideoId) {
-                areEpisodesWatchedForActions(
-                    meta = meta,
-                    episodes = previousEpisodes,
-                    watchedKeys = watchedUiState.watchedKeys,
-                    progressByVideoId = progressByVideoId,
-                )
-            }
-            val isSeasonWatched = remember(seasonEpisodes, watchedUiState.watchedKeys, progressByVideoId) {
-                areEpisodesWatchedForActions(
-                    meta = meta,
-                    episodes = seasonEpisodes,
-                    watchedKeys = watchedUiState.watchedKeys,
-                    progressByVideoId = progressByVideoId,
-                )
-            }
-            val seasonLabel = selectedEpisode.season?.let {
-                stringResource(Res.string.episodes_season, it)
-            } ?: stringResource(Res.string.episodes_specials)
-            NuvioPosterZoomActionOverlay(
-                imageUrl = zoomAnchor.imageUrl ?: selectedEpisode.thumbnail ?: meta.background ?: meta.poster,
-                title = selectedEpisode.title,
-                subtitle = localizedSeasonEpisodeCode(selectedEpisode.season, selectedEpisode.episode) ?: seasonLabel,
-                isWatched = isSelectedEpisodeWatched,
-                blurred = metaScreenSettingsUiState.blurUnwatchedEpisodes && !isSelectedEpisodeWatched,
-                depthSurface = NuvioCardDepthSurface.EpisodeCards,
-                anchor = zoomAnchor,
-                actions = buildList {
-                    add(
-                        PosterZoomOverlayAction(
-                            icon = Icons.Default.CheckCircle,
-                            label = if (isSelectedEpisodeWatched) {
-                                stringResource(Res.string.episode_mark_unwatched)
-                            } else {
-                                stringResource(Res.string.episode_mark_watched)
-                            },
-                            onSelected = {
-                                WatchingActions.toggleEpisodeWatched(
-                                    meta = meta,
-                                    episode = selectedEpisode,
-                                    isCurrentlyWatched = isSelectedEpisodeWatched,
-                                )
-                            },
-                        ),
-                    )
-                    if (previousEpisodes.isNotEmpty()) {
-                        add(
-                            PosterZoomOverlayAction(
-                                icon = Icons.Default.DoneAll,
-                                label = if (arePreviousEpisodesWatched) {
-                                    stringResource(Res.string.episode_mark_previous_unwatched)
-                                } else {
-                                    stringResource(Res.string.episode_mark_previous_watched)
-                                },
-                                onSelected = {
-                                    WatchingActions.togglePreviousEpisodesWatched(
-                                        meta = meta,
-                                        episodes = previousEpisodes,
-                                        areCurrentlyWatched = arePreviousEpisodesWatched,
-                                    )
-                                },
-                            ),
-                        )
-                    }
-                    add(
-                        PosterZoomOverlayAction(
-                            icon = Icons.Default.PlaylistAddCheckCircle,
-                            label = if (isSeasonWatched) {
-                                stringResource(Res.string.episode_mark_season_unwatched, seasonLabel)
-                            } else {
-                                stringResource(Res.string.episode_mark_season_watched, seasonLabel)
-                            },
-                            onSelected = {
-                                WatchingActions.toggleSeasonWatched(
-                                    meta = meta,
-                                    episodes = seasonEpisodes,
-                                    areCurrentlyWatched = isSeasonWatched,
-                                )
-                            },
-                        ),
-                    )
-                    if (onPlayManually != null && StreamAutoPlayPolicy.isEffectivelyEnabled(playerSettingsUiState)) {
-                        add(
-                            PosterZoomOverlayAction(
-                                icon = Icons.Default.PlayArrow,
-                                label = stringResource(Res.string.play_manually),
-                                onSelected = {
-                                    val playbackVideoId = buildPlaybackVideoId(
-                                        parentMetaId = meta.id,
-                                        seasonNumber = selectedEpisode.season,
-                                        episodeNumber = selectedEpisode.episode,
-                                        fallbackVideoId = selectedEpisode.id,
-                                    )
-                                    val streamVideoId = selectedEpisode.id.takeIf { it.isNotBlank() } ?: playbackVideoId
-                                    val savedProgress = progressByVideoId[streamVideoId]
-                                        ?.takeUnless { it.isCompleted }
-                                    onPlayManually.invoke(
-                                        meta.type,
-                                        streamVideoId,
-                                        meta.id,
-                                        meta.type,
-                                        meta.name,
-                                        meta.logo,
-                                        meta.poster,
-                                        meta.background,
-                                        selectedEpisode.season,
-                                        selectedEpisode.episode,
-                                        selectedEpisode.title,
-                                        selectedEpisode.thumbnail,
-                                        selectedEpisode.overview,
-                                        savedProgress?.lastPositionMs,
-                                    )
-                                },
-                            ),
-                        )
-                    }
-                },
-                hazeState = episodeOverlayHazeState,
-                onDismissed = {
-                    selectedEpisodeForActions = null
-                    selectedEpisodeZoomAnchor = null
-                },
+            NuvioBackButton(
+                onClick = onBack,
+                modifier = Modifier.padding(
+                    start = 12.dp,
+                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp,
+                ),
+                containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.onBackground,
             )
         }
     }
@@ -2201,19 +1637,16 @@ private fun MetaDetails.toMetaPreview(): MetaPreview =
 
 private fun LazyListScope.configuredMetaSectionItems(
     settings: MetaScreenSettingsUiState,
-    isMdbListActive: Boolean,
     meta: MetaDetails,
     isTablet: Boolean,
     contentHorizontalPadding: Dp,
     contentMaxWidth: Dp,
     playButtonLabel: String,
-    isPrimaryPlayEnabled: Boolean,
     isSaved: Boolean,
     isWatched: Boolean,
     onPrimaryPlayClick: () -> Unit,
-    onShuffleClick: (() -> Unit)?,
-    shuffleEnabled: Boolean,
     onPrimaryPlayLongClick: (() -> Unit)?,
+    featuredAction: DetailSecondaryAction? = null,
     onSaveClick: () -> Unit,
     onSaveLongClick: (() -> Unit)?,
     onWatchedClick: () -> Unit,
@@ -2244,8 +1677,8 @@ private fun LazyListScope.configuredMetaSectionItems(
     onTrailerClick: (MetaTrailer) -> Unit,
     progressByVideoId: Map<String, WatchProgressEntry>,
     watchedKeys: Set<String>,
-    fullyWatchedSeriesKeys: Set<String> = emptySet(),
     blurUnwatchedEpisodes: Boolean,
+    showEpisodeRatings: Boolean,
     onEpisodeClick: (MetaVideo) -> Unit,
     onEpisodeLongPress: (MetaVideo) -> Unit,
     onSeasonLongPress: (Int) -> Unit,
@@ -2277,7 +1710,15 @@ private fun LazyListScope.configuredMetaSectionItems(
         sectionItems: List<MetaScreenSectionItem>,
         forceTabLayout: Boolean = settings.tabLayout,
     ) {
-        item(key = key) {
+        val contentType = if (sectionItems.size == 1) {
+            "detail-section-${sectionItems.first().key.name}"
+        } else {
+            "detail-section-tab-group"
+        }
+        item(
+            key = key,
+            contentType = contentType,
+        ) {
             DetailSectionContainer(
                 horizontalPadding = contentHorizontalPadding,
                 contentMaxWidth = contentMaxWidth,
@@ -2287,18 +1728,14 @@ private fun LazyListScope.configuredMetaSectionItems(
                         items = sectionItems,
                         tabLayout = forceTabLayout,
                     ),
-                    isMdbListActive = isMdbListActive,
                     meta = meta,
                     isTablet = isTablet,
-                    horizontalScrollPadding = contentHorizontalPadding,
                     playButtonLabel = playButtonLabel,
-                    isPrimaryPlayEnabled = isPrimaryPlayEnabled,
                     isSaved = isSaved,
                     isWatched = isWatched,
                     onPrimaryPlayClick = onPrimaryPlayClick,
-                    onShuffleClick = onShuffleClick,
-                    shuffleEnabled = shuffleEnabled,
                     onPrimaryPlayLongClick = onPrimaryPlayLongClick,
+                    featuredAction = featuredAction,
                     onSaveClick = onSaveClick,
                     onSaveLongClick = onSaveLongClick,
                     onWatchedClick = onWatchedClick,
@@ -2325,8 +1762,8 @@ private fun LazyListScope.configuredMetaSectionItems(
                     onTrailerClick = onTrailerClick,
                     progressByVideoId = progressByVideoId,
                     watchedKeys = watchedKeys,
-                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                    showEpisodeRatings = showEpisodeRatings,
                     onEpisodeClick = onEpisodeClick,
                     onEpisodeLongPress = onEpisodeLongPress,
                     onSeasonLongPress = onSeasonLongPress,
@@ -2352,7 +1789,7 @@ private fun LazyListScope.configuredMetaSectionItems(
             DetailSectionContainer(
                 horizontalPadding = contentHorizontalPadding,
                 contentMaxWidth = contentMaxWidth,
-                bottomPadding = if (isDesktop) 8.dp else 12.dp,
+                bottomPadding = 12.dp,
             ) {
                 DetailSeriesListHeader(
                     meta = meta,
@@ -2383,7 +1820,6 @@ private fun LazyListScope.configuredMetaSectionItems(
                     progressByVideoId = progressByVideoId,
                     watchedKeys = watchedKeys,
                     episodeRatings = episodeImdbRatings,
-                    episodeRatingsVisibility = settings.episodeRatingsVisibility,
                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                     onEpisodeClick = onEpisodeClick,
                     onEpisodeLongPress = onEpisodeLongPress,
@@ -2516,18 +1952,14 @@ private fun metaSectionHasContent(
 @OptIn(ExperimentalSharedTransitionApi::class)
 private fun ConfiguredMetaSections(
     settings: MetaScreenSettingsUiState,
-    isMdbListActive: Boolean,
     meta: MetaDetails,
     isTablet: Boolean,
-    horizontalScrollPadding: Dp,
     playButtonLabel: String,
-    isPrimaryPlayEnabled: Boolean,
     isSaved: Boolean,
     isWatched: Boolean,
     onPrimaryPlayClick: () -> Unit,
-    onShuffleClick: (() -> Unit)?,
-    shuffleEnabled: Boolean,
     onPrimaryPlayLongClick: (() -> Unit)?,
+    featuredAction: DetailSecondaryAction? = null,
     onSaveClick: () -> Unit,
     onSaveLongClick: (() -> Unit)?,
     onWatchedClick: () -> Unit,
@@ -2554,8 +1986,8 @@ private fun ConfiguredMetaSections(
     onTrailerClick: (MetaTrailer) -> Unit,
     progressByVideoId: Map<String, WatchProgressEntry>,
     watchedKeys: Set<String>,
-    fullyWatchedSeriesKeys: Set<String> = emptySet(),
     blurUnwatchedEpisodes: Boolean,
+    showEpisodeRatings: Boolean,
     onEpisodeClick: (MetaVideo) -> Unit,
     onEpisodeLongPress: (MetaVideo) -> Unit,
     onSeasonLongPress: (Int) -> Unit,
@@ -2587,28 +2019,47 @@ private fun ConfiguredMetaSections(
     fun RenderSection(key: MetaScreenSectionKey, showHeader: Boolean = true) {
         when (key) {
             MetaScreenSectionKey.ACTIONS -> {
-                DetailActions(
+                DetailActionButtons(
                     playLabel = playButtonLabel,
-                    playEnabled = isPrimaryPlayEnabled,
-                    isSaved = isSaved,
-                    isWatched = isWatched,
+                    featuredAction = featuredAction,
+                    secondaryActions = listOf(
+                        DetailSecondaryAction(
+                            label = if (isWatched) {
+                                stringResource(Res.string.hero_mark_unwatched)
+                            } else {
+                                stringResource(Res.string.hero_mark_watched)
+                            },
+                            icon = if (isWatched) {
+                                Icons.Default.CheckCircle
+                            } else {
+                                Icons.Default.CheckCircleOutline
+                            },
+                            isActive = isWatched,
+                            onClick = onWatchedClick,
+                        ),
+                        DetailSecondaryAction(
+                            label = if (isSaved) {
+                                stringResource(Res.string.hero_remove_from_library)
+                            } else {
+                                stringResource(Res.string.hero_add_to_library)
+                            },
+                            icon = if (isSaved) {
+                                Icons.Default.Check
+                            } else {
+                                Icons.Default.Add
+                            },
+                            isActive = isSaved,
+                            onClick = onSaveClick,
+                            onLongClick = onSaveLongClick,
+                        ),
+                    ),
                     isTablet = isTablet,
-                    shuffleEnabled = shuffleEnabled,
                     onPlayClick = onPrimaryPlayClick,
                     onPlayLongClick = if (showManualPlayOption) onPrimaryPlayLongClick else null,
-                    onShuffleClick = onShuffleClick,
-                    onWatchedClick = onWatchedClick,
-                    onSaveClick = onSaveClick,
-                    onSaveLongClick = onSaveLongClick,
                 )
             }
             MetaScreenSectionKey.OVERVIEW -> {
-                DetailMetaInfo(
-                    meta = meta,
-                    showOverallRatings = settings.showOverallRatings,
-                    isMdbListActive = isMdbListActive,
-                    horizontalScrollPadding = horizontalScrollPadding,
-                )
+                DetailMetaInfo(meta = meta)
             }
             MetaScreenSectionKey.PRODUCTION -> {
                 if (hasProductionSection) {
@@ -2619,7 +2070,6 @@ private fun ConfiguredMetaSections(
                 DetailCastSection(
                     cast = meta.cast,
                     showHeader = showHeader,
-                    horizontalScrollPadding = horizontalScrollPadding,
                     onCastClick = onCastClick,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
@@ -2637,18 +2087,12 @@ private fun ConfiguredMetaSections(
                         onLoadMore = onLoadMoreComments,
                         onCommentClick = onCommentClick,
                         showHeader = showHeader,
-                        horizontalScrollPadding = horizontalScrollPadding,
                     )
                 }
             }
             MetaScreenSectionKey.TRAILERS -> {
                 if (hasTrailersSection) {
-                    DetailTrailersSection(
-                        trailers = meta.trailers,
-                        onTrailerClick = onTrailerClick,
-                        showHeader = showHeader,
-                        horizontalScrollPadding = horizontalScrollPadding,
-                    )
+                    DetailTrailersSection(trailers = meta.trailers, onTrailerClick = onTrailerClick, showHeader = showHeader)
                 }
             }
             MetaScreenSectionKey.EPISODES -> {
@@ -2656,15 +2100,14 @@ private fun ConfiguredMetaSections(
                     DetailSeriesContent(
                         meta = meta,
                         showHeader = showHeader,
-                        horizontalScrollPadding = horizontalScrollPadding,
                         preferredSeasonNumber = preferredEpisodeSeasonNumber,
                         preferredEpisodeNumber = preferredEpisodeNumber,
                         episodeCardStyle = settings.episodeCardStyle,
                         progressByVideoId = progressByVideoId,
                         watchedKeys = watchedKeys,
                         episodeRatings = episodeImdbRatings,
-                        episodeRatingsVisibility = settings.episodeRatingsVisibility,
                         blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                        showEpisodeRatings = showEpisodeRatings,
                         onEpisodeClick = onEpisodeClick,
                         onEpisodeLongPress = onEpisodeLongPress,
                         onSeasonLongPress = onSeasonLongPress,
@@ -2682,9 +2125,7 @@ private fun ConfiguredMetaSections(
                         title = meta.collectionName.orEmpty(),
                         items = meta.collectionItems,
                         watchedKeys = watchedKeys,
-                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                         showHeader = showHeader,
-                        horizontalScrollPadding = horizontalScrollPadding,
                         onPosterClick = onOpenMeta,
                     )
                 }
@@ -2694,16 +2135,13 @@ private fun ConfiguredMetaSections(
                     val sourceLabel = when (meta.moreLikeThisSource) {
                         MoreLikeThisSource.TMDB -> stringResource(Res.string.detail_more_like_this_powered_by_tmdb)
                         MoreLikeThisSource.TRAKT -> stringResource(Res.string.detail_more_like_this_powered_by_trakt)
-                        MoreLikeThisSource.SIMKL -> stringResource(Res.string.detail_more_like_this_powered_by_simkl)
                         null -> null
                     }
                     DetailPosterRailSection(
                         title = stringResource(Res.string.details_more_like_this),
                         items = meta.moreLikeThis,
                         watchedKeys = watchedKeys,
-                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                         showHeader = showHeader,
-                        horizontalScrollPadding = horizontalScrollPadding,
                         sourceLabel = sourceLabel,
                         onPosterClick = onOpenMeta,
                     )
@@ -2811,11 +2249,6 @@ private fun TabbedSectionGroup(
         }
     }
 }
-
-private val tabletHeroSectionKeys = setOf(
-    MetaScreenSectionKey.ACTIONS,
-    MetaScreenSectionKey.OVERVIEW,
-)
 
 private fun detailTabletContentMaxWidth(maxWidth: Dp, isTablet: Boolean): Dp =
     if (!isTablet) {

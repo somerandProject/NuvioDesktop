@@ -3,42 +3,28 @@ package com.nuvio.app.features.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import co.touchlab.kermit.Logger
-import com.nuvio.app.core.ui.NuvioToastController
-import com.nuvio.app.core.ui.blockMouseBackForwardButtons
 import com.nuvio.app.features.addons.AddonRepository
-import com.nuvio.app.isDesktop
 import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.details.MetaScreenSettingsRepository
 import com.nuvio.app.features.p2p.P2pSettingsRepository
 import com.nuvio.app.features.p2p.P2pStreamingEngine
+import com.nuvio.app.features.settings.NuvioEnhancedSettingsRepository
 import com.nuvio.app.features.watched.WatchedRepository
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.compose_player_airs_prefix
 import nuvio.composeapp.generated.resources.compose_player_downloaded
 import nuvio.composeapp.generated.resources.compose_player_resize_fill
 import nuvio.composeapp.generated.resources.compose_player_resize_fit
-import nuvio.composeapp.generated.resources.compose_player_resize_stretch
 import nuvio.composeapp.generated.resources.compose_player_resize_zoom
 import nuvio.composeapp.generated.resources.generic_unknown
 import nuvio.composeapp.generated.resources.parental_alcohol
@@ -52,14 +38,17 @@ import nuvio.composeapp.generated.resources.parental_violence
 import nuvio.composeapp.generated.resources.compose_player_tba
 import org.jetbrains.compose.resources.stringResource
 
-private val playerScopeLog = Logger.withTag("PlayerScreen")
-
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun PlayerScreenContent(args: PlayerScreenArgs) {
+    LockPlayerToLandscape()
+
     val playerSettingsUiState by remember {
         PlayerSettingsRepository.ensureLoaded()
         PlayerSettingsRepository.uiState
+    }.collectAsStateWithLifecycle()
+    val nuvioEnhancedSettingsUiState by remember {
+        NuvioEnhancedSettingsRepository.ensureLoaded()
+        NuvioEnhancedSettingsRepository.uiState
     }.collectAsStateWithLifecycle()
     val p2pSettingsUiState by remember {
         P2pSettingsRepository.ensureLoaded()
@@ -91,40 +80,17 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
     BoxWithConstraints(
         modifier = args.modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .blockMouseBackForwardButtons(),
+            .background(Color.Black),
     ) {
         val density = LocalDensity.current
         val horizontalSafePadding = playerHorizontalSafePadding()
         val metrics = remember(maxWidth) { PlayerLayoutMetrics.fromWidth(maxWidth) }
 
-        // The player launches many coroutines (autoplay handoff, source swaps,
-        // track refresh, progress persistence). A bare rememberCoroutineScope()
-        // lets any uncaught child exception kill the whole app on Android.
-        // A supervisor scope with an exception handler degrades that to a logged,
-        // surfaced failure instead of a force close.
-        val playerScope = remember {
-            CoroutineScope(
-                Dispatchers.Main + SupervisorJob() + CoroutineExceptionHandler { _, error ->
-                    if (error is CancellationException) return@CoroutineExceptionHandler
-                    playerScopeLog.e("Unhandled player coroutine failure", error)
-                    NuvioToastController.show(
-                        error.message?.takeIf { it.isNotBlank() }
-                            ?: error::class.simpleName
-                            ?: "Playback error",
-                    )
-                },
-            )
-        }
-        DisposableEffect(Unit) {
-            onDispose { playerScope.cancel() }
-        }
-        runtime.scope = playerScope
+        runtime.scope = rememberCoroutineScope()
         runtime.hapticFeedback = LocalHapticFeedback.current
-        runtime.gestureController = rememberPlayerGestureController(
-            restoreBrightness = playerSettingsUiState.touchGesturesEnabled,
-        )
+        runtime.gestureController = rememberPlayerGestureController()
         runtime.playerSettingsUiState = playerSettingsUiState
+        runtime.nuvioEnhancedSettingsUiState = nuvioEnhancedSettingsUiState
         runtime.p2pSettingsUiState = p2pSettingsUiState
         runtime.p2pStreamingState = p2pStreamingState
         runtime.metaScreenSettingsUiState = metaScreenSettingsUiState
@@ -134,24 +100,18 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         runtime.episodeStreamsRepoState = episodeStreamsRepoState
         runtime.metaUiState = metaUiState
         runtime.addonsUiState = addonsUiState
-        runtime.addonSubtitles = mergeStreamAndAddonSubtitles(addonSubtitles, runtime.externalSubtitles)
+        runtime.addonSubtitles = addonSubtitles
         runtime.isLoadingAddonSubtitles = isLoadingAddonSubtitles
         runtime.horizontalSafePadding = horizontalSafePadding
         runtime.metrics = metrics
         runtime.sliderEdgePadding = horizontalSafePadding + metrics.horizontalPadding
-        runtime.overlayBottomPadding = if (isDesktop || playerSettingsUiState.useLegacyPlayerLayout) {
-            sliderOverlayBottomPadding(metrics)
-        } else {
-            playerTimelineBottomInsets(metrics).asPaddingValues().calculateBottomPadding() +
-                72.dp + PlayerSliderOverlayGap
-        }
+        runtime.overlayBottomPadding = sliderOverlayBottomPadding(metrics)
         runtime.sideGestureSystemEdgeExclusionPx = with(density) {
             PlayerSideGestureSystemEdgeExclusion.toPx()
         }
         runtime.resizeModeFitLabel = stringResource(Res.string.compose_player_resize_fit)
         runtime.resizeModeFillLabel = stringResource(Res.string.compose_player_resize_fill)
         runtime.resizeModeZoomLabel = stringResource(Res.string.compose_player_resize_zoom)
-        runtime.resizeModeStretchLabel = stringResource(Res.string.compose_player_resize_stretch)
         runtime.downloadedLabel = stringResource(Res.string.compose_player_downloaded)
         runtime.airsPrefix = stringResource(Res.string.compose_player_airs_prefix)
         runtime.tbaLabel = stringResource(Res.string.compose_player_tba)
@@ -172,10 +132,12 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
                 args.parentMetaId,
             )?.videos ?: emptyList()
         }
-        val settingsResizeMode = playerSettingsUiState.resizeMode.supportedOnCurrentPlatform()
-        if (runtime.lastSyncedSettingsResizeMode != settingsResizeMode) {
-            runtime.resizeMode = settingsResizeMode
-            runtime.lastSyncedSettingsResizeMode = settingsResizeMode
+        if (
+            playerSettingsUiState.rememberPlayerChoicesEnabled &&
+            runtime.lastSyncedSettingsResizeMode != playerSettingsUiState.resizeMode
+        ) {
+            runtime.resizeMode = playerSettingsUiState.resizeMode
+            runtime.lastSyncedSettingsResizeMode = playerSettingsUiState.resizeMode
         }
         runtime.resetIdentityStateIfNeeded()
 
@@ -185,10 +147,7 @@ internal fun PlayerScreenContent(args: PlayerScreenArgs) {
         EnterImmersivePlayerMode(keepScreenAwake = keepScreenAwake)
         ManagePlayerPictureInPicture(
             isPlaying = runtime.playbackSnapshot.isPlaying,
-            videoSize = IntSize(
-                runtime.playbackSnapshot.videoWidth,
-                runtime.playbackSnapshot.videoHeight,
-            ),
+            videoSize = runtime.layoutSize,
         )
         runtime.BindPlayerRuntimeEffects()
         runtime.RenderPlayerRuntimeUi()

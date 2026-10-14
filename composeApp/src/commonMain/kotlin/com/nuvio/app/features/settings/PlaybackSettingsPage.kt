@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,19 +21,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import com.nuvio.app.core.ui.DialogButton
-import com.nuvio.app.core.ui.DialogButtons
-import com.nuvio.app.core.ui.DialogButtonStyle
-import com.nuvio.app.core.ui.DialogOption
-import com.nuvio.app.core.ui.DialogSurface
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.BasicAlertDialog
+import com.nuvio.app.core.ui.NuvioLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -54,13 +56,6 @@ import com.nuvio.app.features.addons.AddonRepository
 import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.player.AddonSubtitleStartupMode
 import com.nuvio.app.features.player.AndroidLibmpvVideoOutput
-import com.nuvio.app.features.player.PlaybackBufferSettings
-import com.nuvio.app.features.player.playbackHeapBufferMaxMb
-import com.nuvio.app.features.player.VodCacheSizeMode
-import com.nuvio.app.features.player.VodCacheSizing
-import com.nuvio.app.features.player.exoNativeMemoryInfo
-import com.nuvio.app.features.player.isExoNativeMemorySupported
-import com.nuvio.app.features.player.playbackCacheUsableSpaceBytes
 import com.nuvio.app.features.player.AndroidPlaybackEngine
 import com.nuvio.app.features.player.AudioLanguageOption
 import com.nuvio.app.features.player.AvailableLanguageOptions
@@ -79,7 +74,6 @@ import com.nuvio.app.features.player.SubtitleFontFamily
 import com.nuvio.app.features.player.SubtitleFontFileBridge
 import com.nuvio.app.features.player.SubtitleLanguageOption
 import com.nuvio.app.features.player.formatPlaybackSpeedLabel
-import com.nuvio.app.features.player.subtitleFontSizeRangeSp
 import com.nuvio.app.features.player.languageLabelForCode
 import com.nuvio.app.features.player.toStorageHexString
 import com.nuvio.app.features.p2p.P2pConsentDialog
@@ -93,9 +87,7 @@ import com.nuvio.app.features.plugins.PluginsUiState
 import com.nuvio.app.features.plugins.PluginRepository
 import com.nuvio.app.features.streams.StreamAutoPlayMode
 import com.nuvio.app.features.streams.StreamAutoPlaySource
-import com.nuvio.app.isDesktop
 import com.nuvio.app.isIos
-import com.nuvio.app.isWindows
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.StringResource
@@ -208,18 +200,6 @@ fun calculateSteps(
     return (totalSteps - 1).coerceAtLeast(0)
 }
 
-private fun vodCacheSliderStep(minMb: Int, maxMb: Int): Int {
-    val span = (maxMb - minMb).coerceAtLeast(1)
-    val rough = span / 40
-    return when {
-        rough <= 50 -> 50
-        rough <= 100 -> 100
-        rough <= 250 -> 250
-        rough <= 500 -> 500
-        else -> 1024
-    }
-}
-
 @Composable
 fun ValueBox(
     text: String,
@@ -244,7 +224,7 @@ fun ValueBox(
 private fun SettingsSliderRow(
     title: String,
     value: Int,
-    valueText: @Composable (Int) -> String,
+    valueText: String,
     valueRange: IntRange,
     step: Int,
     isTablet: Boolean,
@@ -252,16 +232,7 @@ private fun SettingsSliderRow(
     onValueChange: (Int) -> Unit,
 ) {
     val horizontalPadding = if (isTablet) 20.dp else 16.dp
-    val rangeStart = valueRange.first.toFloat()
-    val rangeEnd = valueRange.last.toFloat()
-    var isDragging by remember { mutableStateOf(false) }
-    var sliderValue by remember { mutableFloatStateOf(value.toFloat()) }
-    LaunchedEffect(value) {
-        if (!isDragging) {
-            sliderValue = value.toFloat().coerceIn(rangeStart, rangeEnd)
-        }
-    }
-    val shownValue = sliderValue.roundToInt().coerceIn(valueRange.first, valueRange.last)
+    var sliderValue by remember(value) { mutableFloatStateOf(value.toFloat()) }
 
     Column(
         modifier = Modifier
@@ -281,25 +252,13 @@ private fun SettingsSliderRow(
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.weight(1f),
             )
-            ValueBox(text = valueText(shownValue), modifier = Modifier.wrapContentWidth())
+            ValueBox(text = valueText, modifier = Modifier.wrapContentWidth())
         }
         Slider(
-            value = sliderValue.coerceIn(rangeStart, rangeEnd),
-            onValueChange = { raw ->
-                if (enabled) {
-                    isDragging = true
-                    val snapped = snapToStep(raw, step.toFloat()).coerceIn(rangeStart, rangeEnd)
-                    sliderValue = snapped
-                    val next = snapped.roundToInt().coerceIn(valueRange.first, valueRange.last)
-                    if (next != value) onValueChange(next)
-                }
-            },
+            value = sliderValue.coerceIn(valueRange.first.toFloat(), valueRange.last.toFloat()),
+            onValueChange = { if (enabled) sliderValue = snapToStep(it, step.toFloat()) },
             onValueChangeFinished = {
-                isDragging = false
-                if (enabled) {
-                    val next = sliderValue.roundToInt().coerceIn(valueRange.first, valueRange.last)
-                    if (next != value) onValueChange(next)
-                }
+                if (enabled) onValueChange(sliderValue.roundToInt().coerceIn(valueRange.first, valueRange.last))
             },
             enabled = enabled,
             valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
@@ -386,14 +345,12 @@ private fun PlaybackSettingsSection(
     var showAutoPlayAddonSelectionDialog by remember { mutableStateOf(false) }
     var showAutoPlayPluginSelectionDialog by remember { mutableStateOf(false) }
     var showAutoPlayRegexDialog by remember { mutableStateOf(false) }
-    var showAutoSkipSegmentDialog by remember { mutableStateOf(false) }
     var showP2pConsentDialog by remember { mutableStateOf(false) }
     var showP2pProfileDialog by remember { mutableStateOf(false) }
     var showP2pCacheSizeDialog by remember { mutableStateOf(false) }
     var p2pCacheClearResult by remember { mutableStateOf<P2pCacheClearResult?>(null) }
     var p2pCacheClearFailed by remember { mutableStateOf(false) }
     val pluginsEnabled = AppFeaturePolicy.pluginsEnabled
-    val externalPlayerSupported = AppFeaturePolicy.externalPlayerSupported
     val autoPlayPlayerSettings by PlayerSettingsRepository.uiState.collectAsStateWithLifecycle()
     val p2pSettings by remember {
         P2pSettingsRepository.ensureLoaded()
@@ -402,11 +359,7 @@ private fun PlaybackSettingsSection(
     val p2pCacheState by P2pStreamingEngine.cacheState.collectAsStateWithLifecycle()
     val p2pStreamingState by P2pStreamingEngine.state.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
-    val availableExternalPlayers = if (externalPlayerSupported) {
-        ExternalPlayerPlatform.availablePlayers()
-    } else {
-        emptyList()
-    }
+    val availableExternalPlayers = ExternalPlayerPlatform.availablePlayers()
     val selectedExternalPlayer = availableExternalPlayers.firstOrNull {
         it.id == autoPlayPlayerSettings.externalPlayerId
     }
@@ -428,16 +381,6 @@ private fun PlaybackSettingsSection(
             isTablet = isTablet,
         ) {
             SettingsGroup(isTablet = isTablet) {
-                if (!isDesktop) {
-                    SettingsSwitchRow(
-                        title = stringResource(Res.string.settings_playback_legacy_layout),
-                        description = stringResource(Res.string.settings_playback_legacy_layout_description),
-                        checked = autoPlayPlayerSettings.useLegacyPlayerLayout,
-                        isTablet = isTablet,
-                        onCheckedChange = PlayerSettingsRepository::setUseLegacyPlayerLayout,
-                    )
-                    SettingsGroupDivider(isTablet = isTablet)
-                }
                 SettingsSwitchRow(
                     title = stringResource(Res.string.settings_playback_show_loading_overlay),
                     description = stringResource(Res.string.settings_playback_show_loading_overlay_description),
@@ -447,150 +390,99 @@ private fun PlaybackSettingsSection(
                 )
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
-                    title = stringResource(Res.string.playback_show_loading_status),
-                    description = stringResource(Res.string.playback_show_loading_status_sub),
-                    checked = autoPlayPlayerSettings.showPlayerLoadingStatus,
-                    isTablet = isTablet,
-                    onCheckedChange = PlayerSettingsRepository::setShowPlayerLoadingStatus,
-                )
-                SettingsGroupDivider(isTablet = isTablet)
-                SettingsSwitchRow(
-                    title = stringResource(Res.string.settings_playback_pause_overlay),
-                    description = stringResource(Res.string.settings_playback_pause_overlay_description),
-                    checked = autoPlayPlayerSettings.pauseOverlayEnabled,
-                    isTablet = isTablet,
-                    onCheckedChange = PlayerSettingsRepository::setPauseOverlayEnabled,
-                )
-                SettingsGroupDivider(isTablet = isTablet)
-                SettingsSwitchRow(
                     title = stringResource(Res.string.settings_playback_parental_guide),
                     description = stringResource(Res.string.settings_playback_parental_guide_description),
                     checked = autoPlayPlayerSettings.showParentalGuide,
                     isTablet = isTablet,
                     onCheckedChange = PlayerSettingsRepository::setShowParentalGuide,
                 )
-                if (externalPlayerSupported) {
+                SettingsGroupDivider(isTablet = isTablet)
+                // Player preference picker: Internal / External
+                SettingsNavigationRow(
+                    title = stringResource(Res.string.settings_playback_player_preference),
+                    description = if (autoPlayPlayerSettings.externalPlayerEnabled) {
+                        stringResource(Res.string.settings_playback_player_preference_external)
+                    } else {
+                        stringResource(Res.string.settings_playback_player_preference_internal)
+                    },
+                    isTablet = isTablet,
+                    onClick = { showExternalPlayerDialog = true },
+                )
+                if (isIos && autoPlayPlayerSettings.externalPlayerEnabled) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsNavigationRow(
-                        title = stringResource(Res.string.settings_playback_player_preference),
-                        description = if (autoPlayPlayerSettings.externalPlayerEnabled) {
-                            stringResource(Res.string.settings_playback_player_preference_external)
-                        } else {
-                            stringResource(Res.string.settings_playback_player_preference_internal)
-                        },
+                        title = stringResource(Res.string.settings_playback_external_player_app),
+                        description = selectedExternalPlayer?.name
+                            ?: if (availableExternalPlayers.isEmpty()) {
+                                stringResource(Res.string.settings_playback_external_player_none_available)
+                            } else {
+                                stringResource(Res.string.settings_playback_not_set)
+                            },
                         isTablet = isTablet,
-                        onClick = { showExternalPlayerDialog = true },
-                    )
-                    if (isIos && autoPlayPlayerSettings.externalPlayerEnabled) {
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsNavigationRow(
-                            title = stringResource(Res.string.settings_playback_external_player_app),
-                            description = selectedExternalPlayer?.name
-                                ?: if (availableExternalPlayers.isEmpty()) {
-                                    stringResource(Res.string.settings_playback_external_player_none_available)
-                                } else {
-                                    stringResource(Res.string.settings_playback_not_set)
-                                },
-                            isTablet = isTablet,
-                            onClick = { showExternalPlayerAppDialog = true },
-                        )
-                    }
-                    if (!isIos && autoPlayPlayerSettings.externalPlayerEnabled) {
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsSwitchRow(
-                            title = stringResource(Res.string.settings_playback_external_player_forward_subtitles),
-                            description = stringResource(Res.string.settings_playback_external_player_forward_subtitles_description),
-                            checked = autoPlayPlayerSettings.externalPlayerForwardSubtitles,
-                            isTablet = isTablet,
-                            onCheckedChange = PlayerSettingsRepository::setExternalPlayerForwardSubtitles,
-                        )
-                    }
-                    if (autoPlayPlayerSettings.externalPlayerEnabled) {
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsSwitchRow(
-                            title = stringResource(Res.string.settings_playback_external_player_send_skip_segments),
-                            description = stringResource(Res.string.settings_playback_external_player_send_skip_segments_description),
-                            checked = autoPlayPlayerSettings.externalPlayerSendSkipSegments,
-                            isTablet = isTablet,
-                            onCheckedChange = PlayerSettingsRepository::setExternalPlayerSendSkipSegments,
-                        )
-                    }
-                }
-                if (!isDesktop) {
-                    SettingsGroupDivider(isTablet = isTablet)
-                    SettingsSwitchRow(
-                        title = stringResource(Res.string.settings_playback_touch_gestures),
-                        description = stringResource(Res.string.settings_playback_touch_gestures_description),
-                        checked = touchGesturesEnabled,
-                        enabled = !autoPlayPlayerSettings.externalPlayerEnabled,
-                        isTablet = isTablet,
-                        onCheckedChange = PlayerSettingsRepository::setTouchGesturesEnabled,
-                    )
-                    SettingsGroupDivider(isTablet = isTablet)
-                    SettingsSwitchRow(
-                        title = stringResource(Res.string.settings_playback_hold_to_speed),
-                        description = stringResource(Res.string.settings_playback_hold_to_speed_description),
-                        checked = holdToSpeedEnabled,
-                        enabled = !autoPlayPlayerSettings.externalPlayerEnabled,
-                        isTablet = isTablet,
-                        onCheckedChange = PlayerSettingsRepository::setHoldToSpeedEnabled,
-                    )
-                    if (holdToSpeedEnabled && !autoPlayPlayerSettings.externalPlayerEnabled) {
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsNavigationRow(
-                            title = stringResource(Res.string.settings_playback_hold_speed),
-                            description = formatPlaybackSpeedLabel(holdToSpeedValue),
-                            isTablet = isTablet,
-                            onClick = { showHoldToSpeedValueDialog = true },
-                        )
-                    }
-                    SettingsGroupDivider(isTablet = isTablet)
-                    SettingsSwitchRow(
-                        title = stringResource(Res.string.settings_playback_remember_brightness),
-                        description = stringResource(Res.string.settings_playback_remember_brightness_description),
-                        checked = autoPlayPlayerSettings.rememberPlayerBrightnessEnabled,
-                        enabled = !autoPlayPlayerSettings.externalPlayerEnabled,
-                        isTablet = isTablet,
-                        onCheckedChange = PlayerSettingsRepository::setRememberPlayerBrightnessEnabled,
-                    )
-                    SettingsGroupDivider(isTablet = isTablet)
-                    SettingsSwitchRow(
-                        title = stringResource(Res.string.settings_playback_remember_choices),
-                        description = stringResource(Res.string.settings_playback_remember_choices_description),
-                        checked = autoPlayPlayerSettings.rememberPlayerChoicesEnabled,
-                        enabled = !autoPlayPlayerSettings.externalPlayerEnabled,
-                        isTablet = isTablet,
-                        onCheckedChange = PlayerSettingsRepository::setRememberPlayerChoicesEnabled,
+                        onClick = { showExternalPlayerAppDialog = true },
                     )
                 }
-                if (isDesktop) {
+                if (!isIos && autoPlayPlayerSettings.externalPlayerEnabled) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsSwitchRow(
-                        title = stringResource(Res.string.settings_playback_volume_boost),
-                        description = stringResource(Res.string.settings_playback_volume_boost_description),
-                        checked = autoPlayPlayerSettings.volumeBoostEnabled,
+                        title = stringResource(Res.string.settings_playback_external_player_forward_subtitles),
+                        description = stringResource(Res.string.settings_playback_external_player_forward_subtitles_description),
+                        checked = autoPlayPlayerSettings.externalPlayerForwardSubtitles,
                         isTablet = isTablet,
-                        onCheckedChange = PlayerSettingsRepository::setVolumeBoostEnabled,
+                        onCheckedChange = PlayerSettingsRepository::setExternalPlayerForwardSubtitles,
                     )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSwitchRow(
+                        title = stringResource(Res.string.settings_playback_external_player_send_skip_segments),
+                        description = stringResource(Res.string.settings_playback_external_player_send_skip_segments_description),
+                        checked = autoPlayPlayerSettings.externalPlayerSendSkipSegments,
+                        isTablet = isTablet,
+                        onCheckedChange = PlayerSettingsRepository::setExternalPlayerSendSkipSegments,
+                    )
+                }
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsSwitchRow(
+                    title = stringResource(Res.string.settings_playback_touch_gestures),
+                    description = stringResource(Res.string.settings_playback_touch_gestures_description),
+                    checked = touchGesturesEnabled,
+                    enabled = !autoPlayPlayerSettings.externalPlayerEnabled,
+                    isTablet = isTablet,
+                    onCheckedChange = PlayerSettingsRepository::setTouchGesturesEnabled,
+                )
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsSwitchRow(
+                    title = stringResource(Res.string.settings_playback_remember_brightness),
+                    description = stringResource(Res.string.settings_playback_remember_brightness_description),
+                    checked = autoPlayPlayerSettings.rememberPlayerBrightnessEnabled,
+                    enabled = !autoPlayPlayerSettings.externalPlayerEnabled,
+                    isTablet = isTablet,
+                    onCheckedChange = PlayerSettingsRepository::setRememberPlayerBrightnessEnabled,
+                )
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsSwitchRow(
+                    title = stringResource(Res.string.settings_playback_remember_choices),
+                    description = stringResource(Res.string.settings_playback_remember_choices_description),
+                    checked = autoPlayPlayerSettings.rememberPlayerChoicesEnabled,
+                    enabled = !autoPlayPlayerSettings.externalPlayerEnabled,
+                    isTablet = isTablet,
+                    onCheckedChange = PlayerSettingsRepository::setRememberPlayerChoicesEnabled,
+                )
+                SettingsGroupDivider(isTablet = isTablet)
+                SettingsSwitchRow(
+                    title = stringResource(Res.string.settings_playback_hold_to_speed),
+                    description = stringResource(Res.string.settings_playback_hold_to_speed_description),
+                    checked = holdToSpeedEnabled,
+                    enabled = !autoPlayPlayerSettings.externalPlayerEnabled,
+                    isTablet = isTablet,
+                    onCheckedChange = PlayerSettingsRepository::setHoldToSpeedEnabled,
+                )
+                if (holdToSpeedEnabled && !autoPlayPlayerSettings.externalPlayerEnabled) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsNavigationRow(
-                        title = stringResource(Res.string.settings_playback_seek_step),
-                        description = stringResource(
-                            Res.string.settings_playback_seek_step_description,
-                            autoPlayPlayerSettings.keyboardSeekStepSeconds,
-                        ),
+                        title = stringResource(Res.string.settings_playback_hold_speed),
+                        description = formatPlaybackSpeedLabel(holdToSpeedValue),
                         isTablet = isTablet,
-                        onClick = {
-                            val current = autoPlayPlayerSettings.keyboardSeekStepSeconds
-                            PlayerSettingsRepository.setKeyboardSeekStepSeconds(
-                                when (current) {
-                                    5 -> 10
-                                    10 -> 15
-                                    15 -> 30
-                                    else -> 5
-                                },
-                            )
-                        },
+                        onClick = { showHoldToSpeedValueDialog = true },
                     )
                 }
             }
@@ -700,8 +592,8 @@ private fun PlaybackSettingsSection(
                 SettingsSliderRow(
                     title = stringResource(Res.string.settings_playback_subtitle_size),
                     value = subtitleStyle.fontSizeSp,
-                    valueText = { size -> stringResource(Res.string.compose_player_font_size_value, size) },
-                    valueRange = subtitleFontSizeRangeSp,
+                    valueText = stringResource(Res.string.compose_player_font_size_value, subtitleStyle.fontSizeSp),
+                    valueRange = 12..40,
                     step = 2,
                     isTablet = isTablet,
                     enabled = subtitleRenderingEnabled,
@@ -721,7 +613,7 @@ private fun PlaybackSettingsSection(
                 SettingsSliderRow(
                     title = stringResource(Res.string.settings_playback_subtitle_vertical_offset),
                     value = subtitleStyle.bottomOffset,
-                    valueText = { offset -> offset.toString() },
+                    valueText = subtitleStyle.bottomOffset.toString(),
                     valueRange = 0..200,
                     step = 5,
                     isTablet = isTablet,
@@ -778,7 +670,7 @@ private fun PlaybackSettingsSection(
                         onClick = { showSubtitleOutlineColorDialog = true },
                     )
                 }
-                val showLibassSettings = !isIos && (isDesktop || androidPlaybackEngine != AndroidPlaybackEngine.Libmpv)
+                val showLibassSettings = !isIos && androidPlaybackEngine != AndroidPlaybackEngine.Libmpv
                 if (showLibassSettings) {
                     SettingsGroupDivider(isTablet = isTablet)
                     SettingsSwitchRow(
@@ -789,7 +681,7 @@ private fun PlaybackSettingsSection(
                         isTablet = isTablet,
                         onCheckedChange = PlayerSettingsRepository::setUseLibass,
                     )
-                    if (useLibass && !isDesktop) {
+                    if (useLibass) {
                         SettingsGroupDivider(isTablet = isTablet)
                         SettingsNavigationRow(
                             title = stringResource(Res.string.settings_playback_render_type),
@@ -830,58 +722,56 @@ private fun PlaybackSettingsSection(
                         isTablet = isTablet,
                         onCheckedChange = P2pSettingsRepository::setHideTorrentStats,
                     )
-                    if (!isDesktop) {
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsNavigationRow(
-                            title = stringResource(Res.string.settings_p2p_profile_title),
-                            description = p2pProfileLabel(p2pSettings.torrentProfile),
-                            isTablet = isTablet,
-                            onClick = { showP2pProfileDialog = true },
-                        )
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsNavigationRow(
-                            title = stringResource(Res.string.settings_p2p_cache_size_title),
-                            description = p2pCacheSizeLabel(p2pSettings.cacheSize),
-                            isTablet = isTablet,
-                            onClick = { showP2pCacheSizeDialog = true },
-                        )
-                        SettingsGroupDivider(isTablet = isTablet)
-                        val cacheClearAvailable = p2pStreamingState !is P2pStreamingState.Connecting &&
-                            p2pStreamingState !is P2pStreamingState.Streaming &&
-                            !p2pCacheState.isClearing
-                        SettingsNavigationRow(
-                            title = stringResource(Res.string.settings_p2p_clear_cache_title),
-                            description = when {
-                                p2pCacheState.isClearing ->
-                                    stringResource(Res.string.settings_p2p_clear_cache_clearing)
-                                !cacheClearAvailable ->
-                                    stringResource(Res.string.settings_p2p_clear_cache_playback_active)
-                                p2pCacheClearFailed ->
-                                    stringResource(Res.string.settings_p2p_clear_cache_failed)
-                                p2pCacheClearResult != null -> stringResource(
-                                    Res.string.settings_p2p_clear_cache_done,
-                                    formatP2pCacheBytes(p2pCacheClearResult!!.reclaimedBytes),
-                                )
-                                !p2pCacheState.hasMeasurement ->
-                                    stringResource(Res.string.settings_p2p_clear_cache_usage_pending)
-                                else -> stringResource(
-                                    Res.string.settings_p2p_clear_cache_usage,
-                                    formatP2pCacheBytes(p2pCacheState.usedBytes),
-                                )
-                            },
-                            enabled = cacheClearAvailable,
-                            isTablet = isTablet,
-                            onClick = {
-                                p2pCacheClearResult = null
-                                p2pCacheClearFailed = false
-                                coroutineScope.launch {
-                                    runCatching { P2pStreamingEngine.clearCache() }
-                                        .onSuccess { p2pCacheClearResult = it }
-                                        .onFailure { p2pCacheClearFailed = true }
-                                }
-                            },
-                        )
-                    }
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.settings_p2p_profile_title),
+                        description = p2pProfileLabel(p2pSettings.torrentProfile),
+                        isTablet = isTablet,
+                        onClick = { showP2pProfileDialog = true },
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.settings_p2p_cache_size_title),
+                        description = p2pCacheSizeLabel(p2pSettings.cacheSize),
+                        isTablet = isTablet,
+                        onClick = { showP2pCacheSizeDialog = true },
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    val cacheClearAvailable = p2pStreamingState !is P2pStreamingState.Connecting &&
+                        p2pStreamingState !is P2pStreamingState.Streaming &&
+                        !p2pCacheState.isClearing
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.settings_p2p_clear_cache_title),
+                        description = when {
+                            p2pCacheState.isClearing ->
+                                stringResource(Res.string.settings_p2p_clear_cache_clearing)
+                            !cacheClearAvailable ->
+                                stringResource(Res.string.settings_p2p_clear_cache_playback_active)
+                            p2pCacheClearFailed ->
+                                stringResource(Res.string.settings_p2p_clear_cache_failed)
+                            p2pCacheClearResult != null -> stringResource(
+                                Res.string.settings_p2p_clear_cache_done,
+                                formatP2pCacheBytes(p2pCacheClearResult!!.reclaimedBytes),
+                            )
+                            !p2pCacheState.hasMeasurement ->
+                                stringResource(Res.string.settings_p2p_clear_cache_usage_pending)
+                            else -> stringResource(
+                                Res.string.settings_p2p_clear_cache_usage,
+                                formatP2pCacheBytes(p2pCacheState.usedBytes),
+                            )
+                        },
+                        enabled = cacheClearAvailable,
+                        isTablet = isTablet,
+                        onClick = {
+                            p2pCacheClearResult = null
+                            p2pCacheClearFailed = false
+                            coroutineScope.launch {
+                                runCatching { P2pStreamingEngine.clearCache() }
+                                    .onSuccess { p2pCacheClearResult = it }
+                                    .onFailure { p2pCacheClearFailed = true }
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -1036,23 +926,21 @@ private fun PlaybackSettingsSection(
 
         if (!isIos) {
             val decoderEnabled = !autoPlayPlayerSettings.externalPlayerEnabled
-            val exoOptionsEnabled = decoderEnabled && (isDesktop || androidPlaybackEngine != AndroidPlaybackEngine.Libmpv)
-            val libmpvOptionsVisible = !isDesktop && androidPlaybackEngine != AndroidPlaybackEngine.ExoPlayer
+            val exoOptionsEnabled = decoderEnabled && androidPlaybackEngine != AndroidPlaybackEngine.Libmpv
+            val libmpvOptionsVisible = androidPlaybackEngine != AndroidPlaybackEngine.ExoPlayer
             val libmpvOptionsEnabled = decoderEnabled && libmpvOptionsVisible
             SettingsSection(
                 title = stringResource(Res.string.settings_playback_section_decoder),
                 isTablet = isTablet,
             ) {
                 SettingsGroup(isTablet = isTablet) {
-                    if (!isDesktop) {
-                        SettingsNavigationRow(
-                            title = stringResource(Res.string.settings_playback_engine),
-                            description = androidPlaybackEngine.label,
-                            enabled = decoderEnabled,
-                            isTablet = isTablet,
-                            onClick = { showPlaybackEngineDialog = true },
-                        )
-                    }
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.settings_playback_engine),
+                        description = androidPlaybackEngine.label,
+                        enabled = decoderEnabled,
+                        isTablet = isTablet,
+                        onClick = { showPlaybackEngineDialog = true },
+                    )
                     if (libmpvOptionsVisible) {
                         SettingsGroupDivider(isTablet = isTablet)
                         SettingsNavigationRow(
@@ -1081,9 +969,7 @@ private fun PlaybackSettingsSection(
                             onCheckedChange = PlayerSettingsRepository::setAndroidLibmpvYuv420pEnabled,
                         )
                     }
-                    if (!isDesktop) {
-                        SettingsGroupDivider(isTablet = isTablet)
-                    }
+                    SettingsGroupDivider(isTablet = isTablet)
                     SettingsNavigationRow(
                         title = stringResource(Res.string.settings_playback_decoder_priority),
                         description = decoderPriorityLabel(decoderPriority),
@@ -1091,259 +977,23 @@ private fun PlaybackSettingsSection(
                         isTablet = isTablet,
                         onClick = { showDecoderPriorityDialog = true },
                     )
-                    if (!isDesktop) {
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsSwitchRow(
-                            title = stringResource(Res.string.settings_playback_map_dv7_to_hevc),
-                            description = stringResource(Res.string.settings_playback_map_dv7_to_hevc_description),
-                            checked = mapDV7ToHevc,
-                            enabled = exoOptionsEnabled,
-                            isTablet = isTablet,
-                            onCheckedChange = PlayerSettingsRepository::setMapDV7ToHevc,
-                        )
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsSwitchRow(
-                            title = stringResource(Res.string.settings_playback_tunneled_playback),
-                            description = stringResource(Res.string.settings_playback_tunneled_playback_description),
-                            checked = tunnelingEnabled,
-                            enabled = exoOptionsEnabled,
-                            isTablet = isTablet,
-                            onCheckedChange = PlayerSettingsRepository::setTunnelingEnabled,
-                        )
-                        SettingsGroupDivider(isTablet = isTablet)
-                        val nativeMemorySupported = isExoNativeMemorySupported()
-                        val nativeMemoryInfo = if (nativeMemorySupported && autoPlayPlayerSettings.exoNativeMemoryEnabled) {
-                            exoNativeMemoryInfo()
-                        } else {
-                            null
-                        }
-                        SettingsSwitchRow(
-                            title = stringResource(Res.string.settings_playback_exo_native_memory),
-                            description = if (nativeMemorySupported) {
-                                stringResource(Res.string.settings_playback_exo_native_memory_description)
-                            } else {
-                                stringResource(Res.string.settings_playback_exo_native_memory_unsupported)
-                            },
-                            checked = nativeMemorySupported && autoPlayPlayerSettings.exoNativeMemoryEnabled,
-                            enabled = exoOptionsEnabled && nativeMemorySupported,
-                            isTablet = isTablet,
-                            onCheckedChange = PlayerSettingsRepository::setExoNativeMemoryEnabled,
-                        )
-                        if (nativeMemoryInfo != null) {
-                            Text(
-                                text = stringResource(
-                                    Res.string.settings_playback_exo_native_memory_device,
-                                    nativeMemoryInfo.ramLabel,
-                                    nativeMemoryInfo.safeLimitMb,
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = if (isTablet) 20.dp else 16.dp, vertical = 4.dp),
-                            )
-                        }
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsSwitchRow(
-                            title = stringResource(Res.string.settings_playback_buffer_custom),
-                            description = stringResource(Res.string.settings_playback_buffer_custom_description),
-                            checked = autoPlayPlayerSettings.bufferEngineEnabled,
-                            enabled = exoOptionsEnabled,
-                            isTablet = isTablet,
-                            onCheckedChange = PlayerSettingsRepository::setBufferEngineEnabled,
-                        )
-                        if (autoPlayPlayerSettings.bufferEngineEnabled) {
-                            val nativeBuffers = nativeMemorySupported && autoPlayPlayerSettings.exoNativeMemoryEnabled
-                            val maxDurationSec = if (nativeBuffers) {
-                                PlaybackBufferSettings.MAX_DURATION_SEC_NATIVE
-                            } else {
-                                PlaybackBufferSettings.MAX_DURATION_SEC_HEAP
-                            }
-                            val durationStep = if (nativeBuffers) {
-                                PlaybackBufferSettings.DURATION_STEP_NATIVE_SEC
-                            } else {
-                                PlaybackBufferSettings.DURATION_STEP_HEAP_SEC
-                            }
-                            val minSeconds = (autoPlayPlayerSettings.minBufferMs / 1_000)
-                                .coerceIn(PlaybackBufferSettings.MIN_DURATION_SEC, maxDurationSec)
-                            val maxSeconds = (autoPlayPlayerSettings.maxBufferMs / 1_000)
-                                .coerceIn(minSeconds, maxDurationSec)
-                            Text(
-                                text = stringResource(Res.string.settings_playback_buffer_warning),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.padding(horizontal = if (isTablet) 20.dp else 16.dp, vertical = 8.dp),
-                            )
-                            SettingsSliderRow(
-                                title = stringResource(Res.string.settings_playback_buffer_min),
-                                value = minSeconds,
-                                valueText = { seconds ->
-                                    stringResource(Res.string.settings_playback_buffer_seconds, seconds)
-                                },
-                                valueRange = PlaybackBufferSettings.MIN_DURATION_SEC..maxDurationSec,
-                                step = durationStep,
-                                isTablet = isTablet,
-                                enabled = exoOptionsEnabled,
-                                onValueChange = { PlayerSettingsRepository.setMinBufferMs(it * 1_000) },
-                            )
-                            SettingsSliderRow(
-                                title = stringResource(Res.string.settings_playback_buffer_max),
-                                value = maxSeconds.coerceAtLeast(minSeconds),
-                                valueText = { seconds ->
-                                    if (seconds <= minSeconds) {
-                                        stringResource(Res.string.settings_playback_buffer_same_as_min, minSeconds)
-                                    } else {
-                                        stringResource(Res.string.settings_playback_buffer_seconds, seconds)
-                                    }
-                                },
-                                valueRange = minSeconds.coerceAtLeast(PlaybackBufferSettings.MIN_DURATION_SEC)..maxDurationSec,
-                                step = durationStep,
-                                isTablet = isTablet,
-                                enabled = exoOptionsEnabled,
-                                onValueChange = { PlayerSettingsRepository.setMaxBufferMs(maxOf(it, minSeconds) * 1_000) },
-                            )
-                            SettingsSliderRow(
-                                title = stringResource(Res.string.settings_playback_buffer_initial),
-                                value = autoPlayPlayerSettings.bufferForPlaybackMs / 1_000,
-                                valueText = { seconds ->
-                                    stringResource(Res.string.settings_playback_buffer_seconds, seconds)
-                                },
-                                valueRange = PlaybackBufferSettings.MIN_START_SEC..PlaybackBufferSettings.MAX_START_SEC,
-                                step = 1,
-                                isTablet = isTablet,
-                                enabled = exoOptionsEnabled,
-                                onValueChange = { PlayerSettingsRepository.setBufferForPlaybackMs(it * 1_000) },
-                            )
-                            SettingsSliderRow(
-                                title = stringResource(Res.string.settings_playback_buffer_rebuffer),
-                                value = autoPlayPlayerSettings.bufferForPlaybackAfterRebufferMs / 1_000,
-                                valueText = { seconds ->
-                                    stringResource(Res.string.settings_playback_buffer_seconds, seconds)
-                                },
-                                valueRange = PlaybackBufferSettings.MIN_START_SEC..PlaybackBufferSettings.MAX_REBUFFER_SEC,
-                                step = 1,
-                                isTablet = isTablet,
-                                enabled = exoOptionsEnabled,
-                                onValueChange = { PlayerSettingsRepository.setBufferForPlaybackAfterRebufferMs(it * 1_000) },
-                            )
-                            SettingsSliderRow(
-                                title = stringResource(Res.string.settings_playback_buffer_back),
-                                value = autoPlayPlayerSettings.backBufferDurationMs / 1_000,
-                                valueText = { seconds ->
-                                    stringResource(Res.string.settings_playback_buffer_seconds, seconds)
-                                },
-                                valueRange = 0..PlaybackBufferSettings.MAX_BACK_SEC,
-                                step = PlaybackBufferSettings.BACK_STEP_SEC,
-                                isTablet = isTablet,
-                                enabled = exoOptionsEnabled,
-                                onValueChange = { PlayerSettingsRepository.setBackBufferDurationMs(it * 1_000) },
-                            )
-                            val memoryInfo = if (nativeBuffers) exoNativeMemoryInfo() else null
-                            val safeTargetMb = if (nativeBuffers) {
-                                memoryInfo?.safeLimitMb ?: PlaybackBufferSettings.MIN_TARGET_MB
-                            } else {
-                                playbackHeapBufferMaxMb()
-                            }
-                            val maxTargetMb = if (nativeBuffers) {
-                                memoryInfo?.warningLimitMb ?: safeTargetMb
-                            } else {
-                                safeTargetMb
-                            }
-                            val targetMb = autoPlayPlayerSettings.targetBufferSizeMb.coerceIn(
-                                PlaybackBufferSettings.MIN_TARGET_MB,
-                                maxTargetMb,
-                            )
-                            SettingsSliderRow(
-                                title = stringResource(Res.string.settings_playback_buffer_target),
-                                value = targetMb,
-                                valueText = { megabytes ->
-                                    stringResource(Res.string.settings_playback_vod_cache_size_value, megabytes)
-                                },
-                                valueRange = PlaybackBufferSettings.MIN_TARGET_MB..maxTargetMb,
-                                step = PlaybackBufferSettings.TARGET_STEP_MB,
-                                isTablet = isTablet,
-                                enabled = exoOptionsEnabled && maxTargetMb > PlaybackBufferSettings.MIN_TARGET_MB,
-                                onValueChange = PlayerSettingsRepository::setTargetBufferSizeMb,
-                            )
-                            if (targetMb > safeTargetMb) {
-                                Text(
-                                    text = stringResource(
-                                        Res.string.settings_playback_buffer_target_warning,
-                                        safeTargetMb,
-                                    ),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.padding(horizontal = if (isTablet) 20.dp else 16.dp, vertical = 4.dp),
-                                )
-                            }
-                        }
-                        SettingsGroupDivider(isTablet = isTablet)
-                        SettingsSwitchRow(
-                            title = stringResource(Res.string.settings_playback_vod_cache),
-                            description = stringResource(Res.string.settings_playback_vod_cache_description),
-                            checked = autoPlayPlayerSettings.vodCacheEnabled,
-                            enabled = exoOptionsEnabled,
-                            isTablet = isTablet,
-                            onCheckedChange = PlayerSettingsRepository::setVodCacheEnabled,
-                        )
-                        if (autoPlayPlayerSettings.vodCacheEnabled) {
-                            SettingsGroupDivider(isTablet = isTablet)
-                            SettingsSwitchRow(
-                                title = stringResource(Res.string.settings_playback_vod_cache_auto_size),
-                                description = stringResource(Res.string.settings_playback_vod_cache_auto_size_description),
-                                checked = autoPlayPlayerSettings.vodCacheSizeMode == VodCacheSizeMode.AUTO,
-                                enabled = exoOptionsEnabled,
-                                isTablet = isTablet,
-                                onCheckedChange = { enabled ->
-                                    PlayerSettingsRepository.setVodCacheSizeMode(
-                                        if (enabled) VodCacheSizeMode.AUTO else VodCacheSizeMode.MANUAL,
-                                    )
-                                },
-                            )
-                            if (autoPlayPlayerSettings.vodCacheSizeMode == VodCacheSizeMode.MANUAL) {
-                                val freeBytes = playbackCacheUsableSpaceBytes()
-                                val maxMb = VodCacheSizing.resolveManualMaxMb(freeBytes)
-                                val sizeMb = autoPlayPlayerSettings.vodCacheSizeMb.coerceIn(
-                                    VodCacheSizing.MIN_SIZE_MB,
-                                    maxMb,
-                                )
-                                if (maxMb > VodCacheSizing.MIN_SIZE_MB) {
-                                    SettingsSliderRow(
-                                        title = stringResource(Res.string.settings_playback_vod_cache_size),
-                                        value = sizeMb,
-                                        valueText = { megabytes ->
-                                            stringResource(Res.string.settings_playback_vod_cache_size_value, megabytes)
-                                        },
-                                        valueRange = VodCacheSizing.MIN_SIZE_MB..maxMb,
-                                        step = vodCacheSliderStep(VodCacheSizing.MIN_SIZE_MB, maxMb),
-                                        isTablet = isTablet,
-                                        enabled = exoOptionsEnabled,
-                                        onValueChange = PlayerSettingsRepository::setVodCacheSizeMb,
-                                    )
-                                }
-                            }
-                            Text(
-                                text = stringResource(Res.string.settings_playback_vod_cache_warning),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.padding(horizontal = if (isTablet) 20.dp else 16.dp, vertical = 8.dp),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        if (isWindows) {
-            SettingsSection(
-                title = stringResource(Res.string.settings_playback_nvidia_rtx_video_section),
-                isTablet = isTablet,
-            ) {
-                SettingsGroup(isTablet = isTablet) {
+                    SettingsGroupDivider(isTablet = isTablet)
                     SettingsSwitchRow(
-                        title = stringResource(Res.string.settings_playback_nvidia_rtx_super_resolution),
-                        description = stringResource(Res.string.settings_playback_nvidia_rtx_super_resolution_desc),
-                        checked = autoPlayPlayerSettings.nvidiaRtxSuperResolutionEnabled,
+                        title = stringResource(Res.string.settings_playback_map_dv7_to_hevc),
+                        description = stringResource(Res.string.settings_playback_map_dv7_to_hevc_description),
+                        checked = mapDV7ToHevc,
+                        enabled = exoOptionsEnabled,
                         isTablet = isTablet,
-                        onCheckedChange = PlayerSettingsRepository::setNvidiaRtxSuperResolutionEnabled,
+                        onCheckedChange = PlayerSettingsRepository::setMapDV7ToHevc,
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSwitchRow(
+                        title = stringResource(Res.string.settings_playback_tunneled_playback),
+                        description = stringResource(Res.string.settings_playback_tunneled_playback_description),
+                        checked = tunnelingEnabled,
+                        enabled = exoOptionsEnabled,
+                        isTablet = isTablet,
+                        onCheckedChange = PlayerSettingsRepository::setTunnelingEnabled,
                     )
                 }
             }
@@ -1418,18 +1068,8 @@ private fun PlaybackSettingsSection(
                     title = stringResource(Res.string.settings_playback_skip_intro_outro_recap),
                     description = stringResource(Res.string.settings_playback_skip_intro_outro_recap_description),
                     checked = autoPlayPlayerSettings.skipIntroEnabled,
-                    enabled = !externalPlayerSupported || !autoPlayPlayerSettings.externalPlayerEnabled,
                     isTablet = isTablet,
                     onCheckedChange = PlayerSettingsRepository::setSkipIntroEnabled,
-                )
-                SettingsGroupDivider(isTablet = isTablet)
-                SettingsNavigationRow(
-                    title = stringResource(Res.string.settings_playback_auto_skip_segments),
-                    description = autoSkipSelectionSummary(autoPlayPlayerSettings.autoSkipSegmentTypes),
-                    enabled = autoPlayPlayerSettings.skipIntroEnabled &&
-                        (!externalPlayerSupported || !autoPlayPlayerSettings.externalPlayerEnabled),
-                    isTablet = isTablet,
-                    onClick = { showAutoSkipSegmentDialog = true },
                 )
                 SettingsGroupDivider(isTablet = isTablet)
                 SettingsSwitchRow(
@@ -1522,14 +1162,6 @@ private fun PlaybackSettingsSection(
                         onCheckedChange = PlayerSettingsRepository::setStreamAutoPlayReuseBingeGroup,
                     )
                 }
-                SettingsGroupDivider(isTablet = isTablet)
-                SettingsSwitchRow(
-                    title = stringResource(Res.string.settings_playback_preload_next_episode),
-                    description = stringResource(Res.string.settings_playback_preload_next_episode_description),
-                    checked = autoPlayPlayerSettings.preloadNextEpisodeSources,
-                    isTablet = isTablet,
-                    onCheckedChange = PlayerSettingsRepository::setPreloadNextEpisodeSources,
-                )
                 SettingsGroupDivider(isTablet = isTablet)
                 var showThresholdModeDialog by remember { mutableStateOf(false) }
                 SettingsNavigationRow(
@@ -1681,7 +1313,7 @@ private fun PlaybackSettingsSection(
         )
     }
 
-    if (showP2pProfileDialog && !isDesktop) {
+    if (showP2pProfileDialog) {
         IosEnumSelectionDialog(
             title = stringResource(Res.string.settings_p2p_profile_title),
             options = P2pTorrentProfile.entries,
@@ -1705,7 +1337,7 @@ private fun PlaybackSettingsSection(
         )
     }
 
-    if (showP2pCacheSizeDialog && !isDesktop) {
+    if (showP2pCacheSizeDialog) {
         IosEnumSelectionDialog(
             title = stringResource(Res.string.settings_p2p_cache_size_title),
             options = P2pCacheSize.entries,
@@ -1906,14 +1538,6 @@ private fun PlaybackSettingsSection(
                 showP2pConsentDialog = false
             },
             onDismiss = { showP2pConsentDialog = false },
-        )
-    }
-
-    if (showAutoSkipSegmentDialog) {
-        AutoSkipSegmentSelectionDialog(
-            selectedTypes = autoPlayPlayerSettings.autoSkipSegmentTypes,
-            onTypeToggled = PlayerSettingsRepository::setAutoSkipSegmentTypeEnabled,
-            onDismiss = { showAutoSkipSegmentDialog = false },
         )
     }
 
@@ -2139,41 +1763,122 @@ private fun PlayerPreferenceDialog(
     onPreferenceSelected: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_player_preference),
     ) {
-        Text(
-            text = stringResource(Res.string.settings_playback_player_preference_description),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Column(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            // Internal option
-            val internalSelected = !isExternal
-            DialogOption(
-                text = stringResource(Res.string.settings_playback_player_preference_internal),
-                selected = internalSelected,
-                onClick = { onPreferenceSelected(false) },
-            )
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_player_preference),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
 
-            // External option
-            DialogOption(
-                text = stringResource(Res.string.settings_playback_player_preference_external),
-                selected = isExternal,
-                onClick = { onPreferenceSelected(true) },
-            )
-        }
+                Text(
+                    text = stringResource(Res.string.settings_playback_player_preference_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
 
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    // Internal option
+                    val internalSelected = !isExternal
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPreferenceSelected(false) },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (internalSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(Res.string.settings_playback_player_preference_internal),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Box(
+                                modifier = Modifier.size(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (internalSelected) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // External option
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPreferenceSelected(true) },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isExternal) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(Res.string.settings_playback_player_preference_external),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Box(
+                                modifier = Modifier.size(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (isExternal) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -2186,37 +1891,88 @@ private fun ExternalPlayerSelectionDialog(
     onPlayerSelected: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_external_player_app),
     ) {
-        if (players.isEmpty()) {
-            Text(
-                text = stringResource(Res.string.settings_playback_external_player_none_available),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                players.forEach { player ->
-                    val isSelected = player.id == selectedPlayerId
-                    DialogOption(
-                        text = player.name,
-                        selected = isSelected,
-                        onClick = { onPlayerSelected(player.id) },
-                    )
-                }
-            }
-        }
+                Text(
+                    text = stringResource(Res.string.settings_playback_external_player_app),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
 
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
+                if (players.isEmpty()) {
+                    Text(
+                        text = stringResource(Res.string.settings_playback_external_player_none_available),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        players.forEach { player ->
+                            val isSelected = player.id == selectedPlayerId
+                            val containerColor = if (isSelected) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            }
+
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onPlayerSelected(player.id) },
+                                shape = RoundedCornerShape(12.dp),
+                                color = containerColor,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = player.name,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Box(
+                                        modifier = Modifier.size(24.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -2230,32 +1986,91 @@ private fun LanguageSelectionDialog(
     onSelect: (String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = title,
     ) {
-        LazyColumn(
+        Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 420.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            items(options) { option ->
-                val isSelected = option.value == selectedValue
-                DialogOption(
-                    text = option.label,
-                    description = option.description?.takeIf { it.isNotBlank() },
-                    selected = isSelected,
-                    onClick = { onSelect(option.value) },
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(options) { option ->
+                        val isSelected = option.value == selectedValue
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(option.value) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = containerColor,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = option.label,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    if (!option.description.isNullOrBlank()) {
+                                        Text(
+                                            text = option.description,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
         }
     }
 }
@@ -2269,29 +2084,80 @@ private fun ReuseCacheDurationDialog(
 ) {
     val options = listOf(1, 2, 3, 6, 12, 24, 48, 72, 168)
 
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_last_link_cache_duration),
     ) {
-        Column(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            options.forEach { hours ->
-                val isSelected = hours == selectedHours
-                DialogOption(
-                    text = formatReuseCacheDuration(hours),
-                    selected = isSelected,
-                    onClick = { onDurationSelected(hours) },
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_last_link_cache_duration),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    options.forEach { hours ->
+                        val isSelected = hours == selectedHours
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onDurationSelected(hours) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = containerColor,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = formatReuseCacheDuration(hours),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
         }
     }
 }
@@ -2309,29 +2175,80 @@ private fun DecoderPriorityDialog(
         2 to Res.string.settings_playback_decoder_prefer_app,
     )
 
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_decoder_priority),
     ) {
-        Column(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            options.forEach { (priority, labelRes) ->
-                val isSelected = priority == selectedPriority
-                DialogOption(
-                    text = stringResource(labelRes),
-                    selected = isSelected,
-                    onClick = { onPrioritySelected(priority) },
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_decoder_priority),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    options.forEach { (priority, labelRes) ->
+                        val isSelected = priority == selectedPriority
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPrioritySelected(priority) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = containerColor,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(labelRes),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
         }
     }
 }
@@ -2349,22 +2266,81 @@ private fun PlaybackEngineDialog(
         AndroidPlaybackEngine.Libmpv to Res.string.settings_playback_engine_libmpv_description,
     )
 
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_engine),
     ) {
-        Column(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            AndroidPlaybackEngine.entries.forEach { engine ->
-                val isSelected = engine == selectedEngine
-                DialogOption(
-                    text = engine.label,
-                    description = stringResource(descriptions.getValue(engine)),
-                    selected = isSelected,
-                    onClick = { onEngineSelected(engine) },
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_engine),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
                 )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AndroidPlaybackEngine.entries.forEach { engine ->
+                        val isSelected = engine == selectedEngine
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onEngineSelected(engine) },
+                            shape = RoundedCornerShape(14.dp),
+                            color = containerColor,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        text = engine.label,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = stringResource(descriptions.getValue(engine)),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -2381,31 +2357,92 @@ private fun <T> IosEnumSelectionDialog(
     onSelect: (T) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = title,
     ) {
-        Column(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            options.forEach { option ->
-                val isSelected = option == selected
-                val optionDescription = description(option)
-                DialogOption(
-                    text = label(option),
-                    description = optionDescription,
-                    selected = isSelected,
-                    onClick = { onSelect(option) },
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    options.forEach { option ->
+                        val isSelected = option == selected
+                        val optionDescription = description(option)
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(option) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = containerColor,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                                ) {
+                                    Text(
+                                        text = label(option),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    if (optionDescription != null) {
+                                        Text(
+                                            text = optionDescription,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
         }
     }
 }
@@ -2419,29 +2456,80 @@ private fun HoldToSpeedValueDialog(
 ) {
     val options = listOf(1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f)
 
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_hold_speed),
     ) {
-        Column(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            options.forEach { speed ->
-                val isSelected = speed == selectedSpeed
-                DialogOption(
-                    text = formatPlaybackSpeedLabel(speed),
-                    selected = isSelected,
-                    onClick = { onSpeedSelected(speed) },
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_hold_speed),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    options.forEach { speed ->
+                        val isSelected = speed == selectedSpeed
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSpeedSelected(speed) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = containerColor,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = formatPlaybackSpeedLabel(speed),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
         }
     }
 }
@@ -2461,29 +2549,80 @@ private fun LibassRenderTypeDialog(
         "CUES" to Res.string.settings_playback_render_type_cues,
     )
 
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_render_type),
     ) {
-        Column(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            options.forEach { (value, labelRes) ->
-                val isSelected = value == selectedRenderType
-                DialogOption(
-                    text = stringResource(labelRes),
-                    selected = isSelected,
-                    onClick = { onRenderTypeSelected(value) },
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_render_type),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    options.forEach { (value, labelRes) ->
+                        val isSelected = value == selectedRenderType
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onRenderTypeSelected(value) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = containerColor,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(labelRes),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
         }
     }
 }
@@ -2711,43 +2850,93 @@ private fun SubtitleColorDialog(
     onColorSelected: (Color) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = title,
     ) {
-        Column(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            colors.forEach { color ->
-                DialogOption(
-                    text = subtitleColorLabel(color),
-                    selected = selectedColor.toStorageHexString() == color.toStorageHexString(),
-                    onClick = { onColorSelected(color) },
-                    leading = {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    colors.forEach { color ->
+                        val isSelected = selectedColor.toStorageHexString() == color.toStorageHexString()
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        }
                         Surface(
-                            modifier = Modifier.size(28.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (color.alpha == 0f) {
-                                MaterialTheme.colorScheme.surface
-                            } else {
-                                color
-                            },
-                            border = BorderStroke(
-                                1.dp,
-                                MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
-                            ),
-                        ) {}
-                    },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onColorSelected(color) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = containerColor,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Surface(
+                                    modifier = Modifier.size(28.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (color.alpha == 0f) {
+                                        MaterialTheme.colorScheme.surface
+                                    } else {
+                                        color
+                                    },
+                                    border = BorderStroke(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+                                    ),
+                                ) {}
+                                Spacer(modifier = Modifier.size(12.dp))
+                                Text(
+                                    text = subtitleColorLabel(color),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
         }
     }
 }
@@ -2777,30 +2966,87 @@ private fun StreamAutoPlayModeDialog(
         ),
     )
 
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_stream_selection_mode),
     ) {
-        Column(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            options.forEach { (mode, titleRes, descriptionRes) ->
-                val isSelected = mode == selectedMode
-                DialogOption(
-                    text = stringResource(titleRes),
-                    description = stringResource(descriptionRes),
-                    selected = isSelected,
-                    onClick = { onModeSelected(mode) },
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_stream_selection_mode),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    options.forEach { (mode, titleRes, descriptionRes) ->
+                        val isSelected = mode == selectedMode
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onModeSelected(mode) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = containerColor,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(titleRes),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = stringResource(descriptionRes),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
         }
     }
 }
@@ -2847,30 +3093,87 @@ private fun StreamAutoPlaySourceDialog(
         }
     }
 
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_source_scope),
     ) {
-        Column(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            options.forEach { (source, titleRes, descriptionRes) ->
-                val isSelected = source == selectedSource
-                DialogOption(
-                    text = stringResource(titleRes),
-                    description = stringResource(descriptionRes),
-                    selected = isSelected,
-                    onClick = { onSourceSelected(source) },
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_source_scope),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    options.forEach { (source, titleRes, descriptionRes) ->
+                        val isSelected = source == selectedSource
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSourceSelected(source) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = containerColor,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(titleRes),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = stringResource(descriptionRes),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
         }
     }
 }
@@ -2889,54 +3192,129 @@ private fun StreamAutoPlayProviderSelectionDialog(
         mutableStateOf(selectedItems.intersect(items.toSet()))
     }
 
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = {
             onSelectionSaved(selected)
             onDismiss()
         },
-        title = title,
     ) {
-        DialogOption(
-            text = allLabel,
-            selected = selected.isEmpty(),
-            onClick = { selected = emptySet() },
-        )
-
-        if (items.isEmpty()) {
-            Text(
-                text = stringResource(Res.string.settings_playback_no_items_available),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 340.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(
-                    count = items.size,
-                    key = { items[it] },
-                ) { index ->
-                    val item = items[index]
-                    val isSelected = item in selected
-                    DialogOption(
-                        text = item,
-                        selected = isSelected,
-                        onClick = {
-                            selected = if (isSelected) selected - item else selected + item
-                        },
-                    )
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                val allContainerColor = if (selected.isEmpty()) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                 }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selected = emptySet() },
+                    shape = RoundedCornerShape(12.dp),
+                    color = allContainerColor,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = allLabel,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (selected.isEmpty()) {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+
+                if (items.isEmpty()) {
+                    Text(
+                        text = stringResource(Res.string.settings_playback_no_items_available),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 340.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(
+                            count = items.size,
+                            key = { items[it] },
+                        ) { index ->
+                            val item = items[index]
+                            val isSelected = item in selected
+                            val containerColor = if (isSelected) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            }
+
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selected = if (isSelected) selected - item else selected + item
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                color = containerColor,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = item,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_save_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
-
-        Text(
-            text = stringResource(Res.string.settings_playback_dialog_save_close),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -2967,121 +3345,140 @@ private fun StreamAutoPlayRegexDialog(
         stringResource(Res.string.settings_playback_regex_preset_no_remux_hdr) to "(?is)^(?!.*\\b(hdr|hdr10|dv|dolby|vision|hevc|remux|2160p)\\b).+$",
     )
 
-    DialogSurface(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_regex_pattern),
     ) {
-        Text(
-            text = stringResource(Res.string.settings_playback_regex_matches_against),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Text(
-            text = stringResource(Res.string.settings_playback_presets),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(
-                count = presets.size,
-                key = { presets[it].first },
-            ) { index ->
-                val (label, pattern) = presets[index]
-                Surface(
-                    modifier = Modifier.clickable {
-                        regex = pattern
-                        regexError = null
-                    },
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                ) {
-                    Text(
-                        text = label,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-        }
-
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-            border = BorderStroke(
-                1.dp,
-                if (regexError != null) MaterialTheme.colorScheme.error
-                else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-            ),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            BasicTextField(
-                value = regex,
-                onValueChange = {
-                    regex = it
-                    regexError = null
-                },
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Text,
-                ),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    .padding(20.dp)
+                    .heightIn(max = 520.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_regex_pattern),
+                    style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                decorationBox = { innerTextField ->
-                    if (regex.isBlank()) {
-                        Text(
-                            text = stringResource(Res.string.settings_playback_regex_placeholder),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        )
-                    }
-                    innerTextField()
-                },
-            )
-        }
+                    fontWeight = FontWeight.SemiBold,
+                )
 
-        if (regexError != null) {
-            Text(
-                text = regexError ?: "",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+                Text(
+                    text = stringResource(Res.string.settings_playback_regex_matches_against),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
 
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_cancel),
-                onClick = onDismiss,
-            )
-            DialogButton(
-                text = stringResource(Res.string.action_clear),
-                onClick = {
-                    regex = ""
-                    regexError = null
-                },
-            )
-            DialogButton(
-                text = stringResource(Res.string.action_save),
-                onClick = {
-                    val value = regex.trim()
-                    if (value.isNotEmpty()) {
-                        val valid = runCatching { Regex(value, RegexOption.IGNORE_CASE) }.isSuccess
-                        if (!valid) {
-                            regexError = invalidRegexPattern
-                            return@DialogButton
+                Text(
+                    text = stringResource(Res.string.settings_playback_presets),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(
+                        count = presets.size,
+                        key = { presets[it].first },
+                    ) { index ->
+                        val (label, pattern) = presets[index]
+                        Surface(
+                            modifier = Modifier.clickable {
+                                regex = pattern
+                                regexError = null
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        ) {
+                            Text(
+                                text = label,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
                         }
                     }
-                    onSave(value)
-                },
-                style = DialogButtonStyle.Primary,
-            )
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    border = BorderStroke(
+                        1.dp,
+                        if (regexError != null) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    ),
+                ) {
+                    BasicTextField(
+                        value = regex,
+                        onValueChange = {
+                            regex = it
+                            regexError = null
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                        ),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        decorationBox = { innerTextField ->
+                            if (regex.isBlank()) {
+                                Text(
+                                    text = stringResource(Res.string.settings_playback_regex_placeholder),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                )
+                            }
+                            innerTextField()
+                        },
+                    )
+                }
+
+                if (regexError != null) {
+                    Text(
+                        text = regexError ?: "",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(Res.string.action_cancel))
+                    }
+                    TextButton(onClick = {
+                        regex = ""
+                        regexError = null
+                    }) {
+                        Text(stringResource(Res.string.action_clear))
+                    }
+                    TextButton(onClick = {
+                        val value = regex.trim()
+                        if (value.isNotEmpty()) {
+                            val valid = runCatching { Regex(value, RegexOption.IGNORE_CASE) }.isSuccess
+                            if (!valid) {
+                                regexError = invalidRegexPattern
+                                return@TextButton
+                            }
+                        }
+                        onSave(value)
+                    }) {
+                        Text(stringResource(Res.string.action_save))
+                    }
+                }
+            }
         }
     }
 }
@@ -3095,43 +3492,53 @@ private fun AnimeSkipClientIdDialog(
 ) {
     var value by remember { mutableStateOf(initialValue) }
 
-    DialogSurface(
-        onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_anime_skip_client_id),
-    ) {
-        Text(
-            text = stringResource(Res.string.settings_playback_anime_skip_client_id_description),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    BasicAlertDialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            BasicTextField(
-                value = value,
-                onValueChange = { value = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_anime_skip_client_id),
+                    style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
-                ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                singleLine = true,
-            )
-        }
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_cancel),
-                onClick = onDismiss,
-            )
-            DialogButton(
-                text = stringResource(Res.string.action_save),
-                onClick = { onSave(value.trim()) },
-                style = DialogButtonStyle.Primary,
-            )
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(Res.string.settings_playback_anime_skip_client_id_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                ) {
+                    BasicTextField(
+                        value = value,
+                        onValueChange = { value = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        singleLine = true,
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
+                    TextButton(onClick = { onSave(value.trim()) }) { Text(stringResource(Res.string.action_save)) }
+                }
+            }
         }
     }
 }
@@ -3149,68 +3556,90 @@ private fun IntroDbApiKeyDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val invalidKeyMessage = stringResource(Res.string.settings_playback_introdb_invalid_key)
 
-    DialogSurface(
-        onDismissRequest = { if (!isVerifying) onDismiss() },
-        title = stringResource(Res.string.settings_playback_introdb_api_key),
-    ) {
-        Text(
-            text = stringResource(Res.string.settings_playback_introdb_api_key_description),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        SettingsSecretTextField(
-            value = value,
-            onValueChange = {
-                value = it
-                errorMessage = null
-            },
-            label = stringResource(Res.string.settings_playback_introdb_api_key),
+    BasicAlertDialog(onDismissRequest = { if (!isVerifying) onDismiss() }) {
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            isError = errorMessage != null,
-        )
-        if (errorMessage != null) {
-            Text(
-                text = errorMessage!!,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(start = 4.dp)
-            )
-        }
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_cancel),
-                onClick = onDismiss,
-                enabled = !isVerifying,
-            )
-            DialogButton(
-                text = stringResource(Res.string.action_save),
-                onClick = {
-                    val trimmed = value.trim()
-                    if (trimmed.isEmpty()) {
-                        onSave(trimmed)
-                        return@DialogButton
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_introdb_api_key),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(Res.string.settings_playback_introdb_api_key_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SettingsSecretTextField(
+                    value = value,
+                    onValueChange = {
+                        value = it
+                        errorMessage = null
+                    },
+                    label = stringResource(Res.string.settings_playback_introdb_api_key),
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = errorMessage != null,
+                )
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onDismiss, enabled = !isVerifying) { 
+                        Text(stringResource(Res.string.action_cancel)) 
                     }
+                    TextButton(
+                        onClick = { 
+                            val trimmed = value.trim()
+                            if (trimmed.isEmpty()) {
+                                onSave(trimmed)
+                                return@TextButton
+                            }
+                            
+                            if (trimmed == initialValue) {
+                                onDismiss()
+                                return@TextButton
+                            }
 
-                    if (trimmed == initialValue) {
-                        onDismiss()
-                        return@DialogButton
-                    }
-
-                    isVerifying = true
-                    errorMessage = null
-                    scope.launch {
-                        val isValid = com.nuvio.app.features.player.skip.SkipIntroRepository.verifyIntroDbApiKey(trimmed)
-                        isVerifying = false
-                        if (isValid) {
-                            onSave(trimmed)
+                            isVerifying = true
+                            errorMessage = null
+                            scope.launch {
+                                val isValid = com.nuvio.app.features.player.skip.SkipIntroRepository.verifyIntroDbApiKey(trimmed)
+                                isVerifying = false
+                                if (isValid) {
+                                    onSave(trimmed)
+                                } else {
+                                    errorMessage = invalidKeyMessage
+                                }
+                            }
+                        },
+                        enabled = !isVerifying
+                    ) { 
+                        if (isVerifying) {
+                            NuvioLoadingIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         } else {
-                            errorMessage = invalidKeyMessage
+                            Text(stringResource(Res.string.action_save)) 
                         }
                     }
-                },
-                style = DialogButtonStyle.Primary,
-                loading = isVerifying,
-            )
+                }
+            }
         }
     }
 }
@@ -3224,24 +3653,72 @@ private fun NextEpisodeThresholdModeDialog(
 ) {
     val options = com.nuvio.app.features.player.skip.NextEpisodeThresholdMode.entries
 
-    DialogSurface(
-        onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_playback_threshold_mode),
-    ) {
-        options.forEach { mode ->
-            val isSelected = mode == selected
-            DialogOption(
-                text = stringResource(mode.labelRes),
-                selected = isSelected,
-                onClick = { onSelect(mode) },
-            )
-        }
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(Res.string.settings_playback_threshold_mode),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
 
-        DialogButtons {
-            DialogButton(
-                text = stringResource(Res.string.action_done),
-                onClick = onDismiss,
-            )
+                options.forEach { mode ->
+                    val isSelected = mode == selected
+                    val containerColor = if (isSelected) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(mode) },
+                        shape = RoundedCornerShape(12.dp),
+                        color = containerColor,
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(mode.labelRes),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Box(
+                                modifier = Modifier.size(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(Res.string.settings_playback_dialog_close),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

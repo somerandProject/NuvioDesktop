@@ -27,10 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.NuvioCardDepthSurface
-import com.nuvio.app.core.ui.LocalScreenActive
 import com.nuvio.app.core.ui.NuvioShelfSection
 import com.nuvio.app.core.ui.PosterLandscapeAspectRatio
-import com.nuvio.app.core.ui.desktopCatalogShelfPosterBaseWidthDp
 import com.nuvio.app.core.ui.landscapePosterWidth
 import com.nuvio.app.core.ui.nuvioCardDepth
 import com.nuvio.app.core.ui.posterCardClickable
@@ -111,7 +109,6 @@ private fun CollectionFolderCard(
     onClick: (() -> Unit)? = null,
 ) {
     val posterCardStyle = rememberPosterCardStyleUiState()
-    val basePosterWidthDp = desktopCatalogShelfPosterBaseWidthDp(posterCardStyle.widthDp)
     val isLandscapeMode = posterCardStyle.catalogLandscapeModeEnabled
     val shape = if (isLandscapeMode) PosterShape.Landscape else folder.posterShape
     val cardWidth: Dp
@@ -119,24 +116,21 @@ private fun CollectionFolderCard(
 
     when (shape) {
         PosterShape.Poster -> {
-            cardWidth = basePosterWidthDp.dp
+            cardWidth = posterCardStyle.widthDp.dp
             aspectRatio = 0.675f
         }
         PosterShape.Landscape -> {
-            cardWidth = landscapePosterWidth(basePosterWidthDp)
+            cardWidth = landscapePosterWidth(posterCardStyle.widthDp)
             aspectRatio = PosterLandscapeAspectRatio
         }
         PosterShape.Square -> {
-            cardWidth = basePosterWidthDp.dp
+            cardWidth = posterCardStyle.widthDp.dp
             aspectRatio = 1f
         }
     }
 
     Column(
-        modifier = Modifier
-            .posterCardClickable(onClick = onClick, onLongClick = null)
-            .then(modifier)
-            .width(cardWidth),
+        modifier = modifier.width(cardWidth),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         val shapeCorner = RoundedCornerShape(posterCardStyle.cornerRadiusDp.dp)
@@ -165,13 +159,10 @@ private fun CollectionFolderCard(
                     !imageUrl.isNullOrBlank() -> {
                         CollectionCardRemoteImage(
                             imageUrl = imageUrl,
-                            staticImageUrl = firstNonBlank(folder.coverImageUrl),
                             contentDescription = folder.title,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
-                            animateIfPossible = animateGifs &&
-                                isAnimatedCollectionFolderImage(folder, imageUrl) &&
-                                LocalScreenActive.current,
+                            animateIfPossible = animateGifs && isAnimatedCollectionFolderImage(folder, imageUrl),
                         )
                     }
                     !folder.coverEmoji.isNullOrBlank() -> {
@@ -190,6 +181,13 @@ private fun CollectionFolderCard(
                     }
                 }
 
+                if (onClick != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .posterCardClickable(onClick = onClick, onLongClick = null),
+                    )
+                }
             }
         }
 

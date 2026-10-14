@@ -1,11 +1,8 @@
 package com.nuvio.app.features.settings
 
-import com.nuvio.app.features.player.DeviceLanguagePreferences
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.lang_arabic
-import nuvio.composeapp.generated.resources.lang_bengali
 import nuvio.composeapp.generated.resources.lang_bulgarian
-import nuvio.composeapp.generated.resources.lang_croatian
 import nuvio.composeapp.generated.resources.lang_czech
 import nuvio.composeapp.generated.resources.lang_dutch
 import nuvio.composeapp.generated.resources.lang_english
@@ -20,11 +17,9 @@ import nuvio.composeapp.generated.resources.lang_portuguese_brazil
 import nuvio.composeapp.generated.resources.lang_portuguese_portugal
 import nuvio.composeapp.generated.resources.lang_russian
 import nuvio.composeapp.generated.resources.lang_romanian
-import nuvio.composeapp.generated.resources.lang_russian
 import nuvio.composeapp.generated.resources.lang_slovak
 import nuvio.composeapp.generated.resources.lang_spanish
 import nuvio.composeapp.generated.resources.lang_turkish
-import nuvio.composeapp.generated.resources.lang_urdu
 import nuvio.composeapp.generated.resources.lang_norwegian
 import nuvio.composeapp.generated.resources.lang_japanese
 import nuvio.composeapp.generated.resources.lang_vietnamese
@@ -37,9 +32,7 @@ enum class AppLanguage(
 ) {
     DEVICE("device", Res.string.settings_appearance_app_language_device),
     ARABIC("ar", Res.string.lang_arabic),
-    BENGALI("bn", Res.string.lang_bengali),
     BULGARIAN("bg", Res.string.lang_bulgarian),
-    CROATIAN("hr", Res.string.lang_croatian),
     CZECH("cs", Res.string.lang_czech),
     DUTCH("nl", Res.string.lang_dutch),
     ENGLISH("en", Res.string.lang_english),
@@ -54,20 +47,13 @@ enum class AppLanguage(
     PORTUGUESE("pt", Res.string.lang_portuguese_portugal),
     RUSSIAN("ru", Res.string.lang_russian),
     ROMANIAN("ro", Res.string.lang_romanian),
-    RUSSIAN("ru", Res.string.lang_russian),
     SLOVAK("sk", Res.string.lang_slovak),
     SPANISH("es", Res.string.lang_spanish),
     TURKISH("tr", Res.string.lang_turkish),
-    URDU("ur", Res.string.lang_urdu),
     NORWEGIAN("nb", Res.string.lang_norwegian),
     JAPANESE("ja", Res.string.lang_japanese),
     VIETNAMESE("vi", Res.string.lang_vietnamese),
     ;
-
-    fun isRightToLeft(): Boolean {
-        val languageCode = if (this == DEVICE) DeviceLanguagePreferences.preferredLanguageCodes().firstOrNull() else code
-        return languageCode?.substringBefore('-') in setOf(ARABIC.code, HEBREW.code, URDU.code)
-    }
 
     companion object {
         fun fromCode(code: String?): AppLanguage =

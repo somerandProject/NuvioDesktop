@@ -1,12 +1,5 @@
 package com.nuvio.app.features.player
 
-import com.nuvio.app.core.i18n.localizedSeasonEpisodeCode
-import com.nuvio.app.core.ui.NuvioToastController
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nuvio.app.features.shuffle.EpisodeShuffleRepository
-import com.nuvio.app.features.shuffle.ShuffleSurface
-import com.nuvio.app.features.shuffle.watchedShuffleEpisodes
-import com.nuvio.app.features.shuffle.shuffleEpisodeProgress
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,28 +12,14 @@ import com.nuvio.app.features.p2p.P2pSettingsRepository
 import com.nuvio.app.features.p2p.P2pStreamRequest
 import com.nuvio.app.features.p2p.P2pStreamingEngine
 import com.nuvio.app.features.p2p.P2pStreamingState
-import com.nuvio.app.features.player.skip.AutoSkipSegmentType
 import com.nuvio.app.features.player.skip.NextEpisodeInfo
 import com.nuvio.app.features.player.skip.PlayerNextEpisodeRules
 import com.nuvio.app.features.player.skip.SkipIntroRepository
-import com.nuvio.app.features.player.skip.SkipIntervalLookup
-import com.nuvio.app.features.player.skip.autoSkipKey
-import com.nuvio.app.features.player.skip.autoSkipKeysCompletedBy
-import com.nuvio.app.features.player.skip.resolveSkipIntervalLookup
-import com.nuvio.app.features.player.skip.shouldAutoSkip
-import com.nuvio.app.features.player.skip.internalSkipAction
-import com.nuvio.app.features.player.skip.intervalsAtSeekPositions
-import com.nuvio.app.features.servers.ServerPlayback
-import com.nuvio.app.features.servers.ServerStreams
 import com.nuvio.app.features.streams.BingeGroupCacheRepository
 import com.nuvio.app.features.streams.StreamLinkCacheRepository
 import com.nuvio.app.features.streams.StreamItem
 import com.nuvio.app.features.streams.hasLikelyExpiringPlaybackCredentials
-import com.nuvio.app.features.tracking.TrackingScrobbleAction
 import com.nuvio.app.features.watchprogress.WatchProgressRepository
-import com.nuvio.app.isDesktop
-import com.nuvio.app.features.watchprogress.buildPlaybackVideoId
-import com.nuvio.app.features.watching.application.WatchingState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -57,20 +36,15 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
     }
 
     LaunchedEffect(parentMetaType, parentMetaId) {
-        playerMeta = MetaDetailsRepository.peek(parentMetaType, parentMetaId)
-        playerMetaVideos = playerMeta?.videos.orEmpty()
+        playerMetaVideos = MetaDetailsRepository.peek(parentMetaType, parentMetaId)?.videos ?: emptyList()
         if (playerMetaVideos.isEmpty()) {
-            MetaDetailsRepository.fetch(parentMetaType, parentMetaId)?.let { meta ->
-                playerMeta = meta
-                playerMetaVideos = meta.videos
-            }
+            playerMetaVideos = MetaDetailsRepository.fetch(parentMetaType, parentMetaId)?.videos ?: emptyList()
         }
     }
 
     LaunchedEffect(metaUiState.meta, parentMetaType, parentMetaId) {
         val currentMeta = metaUiState.meta ?: return@LaunchedEffect
         if (currentMeta.type == parentMetaType && currentMeta.id == parentMetaId) {
-            playerMeta = currentMeta
             playerMetaVideos = currentMeta.videos
         }
     }
@@ -82,14 +56,11 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         }
     }
 
-    LaunchedEffect(activePlaybackKey, activeSourceUrl, activeSourceAudioUrl, activeSourceHeaders, activeSourceResponseHeaders) {
+    LaunchedEffect(activeSourceUrl, activeSourceAudioUrl, activeSourceHeaders, activeSourceResponseHeaders) {
         errorMessage = null
         playerController = null
         playerControllerSourceUrl = null
         playbackSnapshot = PlayerPlaybackSnapshot()
-        playbackSnapshotKey = null
-        cancelNextEpisodeAutoPlay()
-        cancelNextEpisodePreload()
         isScrubbingTimeline = false
         scrubbingPositionMs = null
         liveGestureFeedback = null
@@ -101,7 +72,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         initialLoadCompleted = false
         lastProgressPersistEpochMs = 0L
         previousIsPlaying = false
-        pendingSeekScrobbleRestart = false
+        pendingScrobbleStartAfterSeek = false
         seekProgressSyncJob?.cancel()
         seekProgressSyncJob = null
         accumulatedSeekResetJob?.cancel()
@@ -109,9 +80,7 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         accumulatedSeekState = null
         speedBoostRestoreSpeed = null
         preferredAudioSelectionApplied = false
-        appliedAudioPreferences = null
         preferredSubtitleSelectionApplied = false
-        isUserExplicitAudioSelection = false
         isUserExplicitSubtitleSelection = false
         hasScannedTextTracksOnce = false
         selectedSubtitleIndex = -1
@@ -122,7 +91,6 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         episodeStreamsPanelState = EpisodeStreamsPanelState()
         PlayerStreamsRepository.clearEpisodeStreams()
         SubtitleRepository.clear()
-        autoFetchedAddonSubtitlesForKey = null
         WatchProgressRepository.ensureLoaded()
     }
 
@@ -208,43 +176,8 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         subtitleAutoSyncState = SubtitleAutoSyncUiState()
     }
 
-    LaunchedEffect(playerController, subtitleStyle, playerSettingsUiState.useLibass) {
-        playerController?.applySubtitleStyle(subtitleStyle, playerSettingsUiState.useLibass)
-    }
-
-    val subtitlePreferenceKey = listOf(
-        playerSettingsUiState.preferredSubtitleLanguage,
-        playerSettingsUiState.secondaryPreferredSubtitleLanguage.orEmpty(),
-        subtitleStyle.useForcedSubtitles,
-    ).joinToString("|")
-    var lastSubtitlePreferenceKey by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(
-        playerController,
-        subtitlePreferenceKey,
-        preferredSubtitleSelectionApplied,
-        selectedSubtitleIndex,
-        selectedAddonSubtitleId,
-        useCustomSubtitles,
-    ) {
-        val controller = playerController ?: return@LaunchedEffect
-        val preferenceChanged = lastSubtitlePreferenceKey != null &&
-            lastSubtitlePreferenceKey != subtitlePreferenceKey
-        lastSubtitlePreferenceKey = subtitlePreferenceKey
-
-        controller.applySubtitlePreferences(
-            preferredLanguage = playerSettingsUiState.preferredSubtitleLanguage,
-            secondaryPreferredLanguage = playerSettingsUiState.secondaryPreferredSubtitleLanguage,
-            useForcedSubtitles = subtitleStyle.useForcedSubtitles,
-            autoSelectionApplied = preferredSubtitleSelectionApplied,
-            hasActiveSubtitle = selectedSubtitleIndex >= 0 || selectedAddonSubtitleId != null,
-            useCustomSubtitles = useCustomSubtitles,
-        )
-
-        if (preferenceChanged) {
-            preferredSubtitleSelectionApplied = false
-            refreshTracks()
-        }
+    LaunchedEffect(playerController, subtitleStyle) {
+        playerController?.applySubtitleStyle(subtitleStyle)
     }
 
     LaunchedEffect(
@@ -264,53 +197,38 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         controller.updateNowPlayingMetadata(buildNowPlayingInfo())
     }
 
-    LaunchedEffect(
-        activeSourceUrl,
-        addonSubtitleFetchKey,
-    ) {
-        if (activeSourceUrl.startsWith("file:") && externalSubtitles.isNotEmpty()) return@LaunchedEffect
+    LaunchedEffect(activeSourceUrl, addonSubtitleFetchKey, playerSettingsUiState.addonSubtitleStartupMode) {
         val fetchKey = addonSubtitleFetchKey ?: return@LaunchedEffect
+        if (playerSettingsUiState.addonSubtitleStartupMode == AddonSubtitleStartupMode.FAST_STARTUP) {
+            return@LaunchedEffect
+        }
         if (autoFetchedAddonSubtitlesForKey == fetchKey) return@LaunchedEffect
         autoFetchedAddonSubtitlesForKey = fetchKey
         fetchAddonSubtitlesForActiveItem()
     }
 
-    LaunchedEffect(playerController, playerControllerSourceUrl, activeSourceUrl, preferredAudioLanguageTargets) {
-        if (playerControllerSourceUrl == activeSourceUrl) {
-            applyPreferredAudioTrack(preferredAudioLanguageTargets)
-        }
-    }
-
-    LaunchedEffect(activeSourceUrl, preferredAudioLanguageTargets) {
-        refreshServerTracks()
-        applyPreferredServerAudioTrack()
-    }
-
-    LaunchedEffect(playbackSnapshot.isLoading, playerController, preferredAudioLanguageTargets) {
+    LaunchedEffect(playbackSnapshot.isLoading, playerController) {
         if (!playbackSnapshot.isLoading && playerController != null) {
             refreshTracks()
-            // Warm the next episode's sources once the current one is playing so
-            // the handoff at the end never shows "fetching sources".
-            maybePreloadNextEpisodeSources()
         }
     }
 
     LaunchedEffect(
         playerController,
         playbackSnapshot.isLoading,
-        addonSubtitles,
-        isLoadingAddonSubtitles,
+        preferredAudioSelectionApplied,
+        preferredSubtitleSelectionApplied,
     ) {
         if (playerController == null || playbackSnapshot.isLoading) {
             return@LaunchedEffect
         }
-        if (trackPreferenceRestoreApplied && preferredAudioSelectionApplied && preferredSubtitleSelectionApplied) {
+        if (preferredAudioSelectionApplied && preferredSubtitleSelectionApplied) {
             return@LaunchedEffect
         }
 
         repeat(10) {
             refreshTracks()
-            if (trackPreferenceRestoreApplied && preferredAudioSelectionApplied && preferredSubtitleSelectionApplied) {
+            if (preferredAudioSelectionApplied && preferredSubtitleSelectionApplied) {
                 return@LaunchedEffect
             }
             delay(300)
@@ -345,10 +263,6 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
             initialSeekApplied = true
             return@LaunchedEffect
         }
-        if (isDesktop && activeInitialPositionMs > 0L) {
-            initialSeekApplied = true
-            return@LaunchedEffect
-        }
 
         controller.seekTo(targetPositionMs)
         initialSeekApplied = true
@@ -356,11 +270,6 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
 
     BindPlayerUiVisibilityEffects()
     BindPlayerMetadataAndSkipEffects()
-
-    DisposableEffect(activeSourceUrl) {
-        val effectSourceUrl = activeSourceUrl
-        onDispose { ServerPlayback.stop(effectSourceUrl) }
-    }
 
     DisposableEffect(playbackSession.videoId, activeSourceUrl, activeSourceAudioUrl) {
         val effectVideoId = playbackSession.videoId
@@ -378,12 +287,9 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
     }
 
     DisposableEffect(Unit) {
-        PlayerStreamsRepository.pauseSearchForPlayback()
         onDispose {
-            args.launchId?.let { launchId -> PlayerLaunchStore.update(launchId) { currentLaunch(it) } }
             playerController?.clearNowPlayingInfo()
             P2pStreamingEngine.shutdown()
-            cancelNextEpisodePreload()
             PlayerStreamsRepository.clearAll()
         }
     }
@@ -393,7 +299,6 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
 private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
     LaunchedEffect(
         controlsVisible,
-        controlsActivityTick,
         isScrubbingTimeline,
         playbackSnapshot.isPlaying,
         playbackSnapshot.isLoading,
@@ -420,15 +325,9 @@ private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
         lockedOverlayVisible = false
     }
 
-    LaunchedEffect(
-        playerSettingsUiState.pauseOverlayEnabled,
-        playbackSnapshot.isPlaying,
-        playbackSnapshot.isLoading,
-        playbackSnapshot.durationMs,
-        errorMessage,
-    ) {
+    LaunchedEffect(playbackSnapshot.isPlaying, playbackSnapshot.isLoading, playbackSnapshot.durationMs, errorMessage) {
         pausedOverlayVisible = false
-        if (!playerSettingsUiState.pauseOverlayEnabled || playbackSnapshot.isPlaying || playbackSnapshot.isLoading || playbackSnapshot.durationMs <= 0L || errorMessage != null) {
+        if (playbackSnapshot.isPlaying || playbackSnapshot.isLoading || playbackSnapshot.durationMs <= 0L || errorMessage != null) {
             return@LaunchedEffect
         }
         delay(5000)
@@ -442,34 +341,23 @@ private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
         playbackSnapshot.isEnded,
         playbackSnapshot.durationMs,
     ) {
-        ServerPlayback.onPlaybackSnapshot(
-            url = activeSourceUrl,
-            positionMs = playbackSnapshot.positionMs,
-            isPlaying = playbackSnapshot.isPlaying,
-            isLoading = playbackSnapshot.isLoading,
-            isEnded = playbackSnapshot.isEnded,
-        )
         if (playbackSnapshot.isEnded) {
-            flushWatchProgress(TrackingScrobbleAction.STOP)
+            flushWatchProgress()
             previousIsPlaying = false
-            pendingSeekScrobbleRestart = false
+            pendingScrobbleStartAfterSeek = false
             return@LaunchedEffect
         }
 
         if (previousIsPlaying && !playbackSnapshot.isPlaying && !playbackSnapshot.isLoading) {
-            pendingSeekScrobbleRestart = false
-            flushWatchProgress(TrackingScrobbleAction.PAUSE)
+            pendingScrobbleStartAfterSeek = false
+            flushWatchProgress()
         }
 
-        if (playbackSnapshot.isPlaying && pendingSeekScrobbleRestart) {
-            pendingSeekScrobbleRestart = false
-            if (hasRequestedScrobbleStartForCurrentItem) {
-                emitTrackingSeekScrobbleStart()
-            } else {
-                emitTrackingScrobbleStart()
-            }
+        if (playbackSnapshot.isPlaying && pendingScrobbleStartAfterSeek) {
+            pendingScrobbleStartAfterSeek = false
+            emitTraktScrobbleStart()
         } else if (!previousIsPlaying && playbackSnapshot.isPlaying) {
-            emitTrackingScrobbleStart()
+            emitTraktScrobbleStart()
         }
 
         if (!playbackSnapshot.isLoading) {
@@ -483,16 +371,6 @@ private fun PlayerScreenRuntime.BindPlayerUiVisibilityEffects() {
 
 @Composable
 private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
-    val shuffleProfile by remember {
-        EpisodeShuffleRepository.ensureLoaded()
-        EpisodeShuffleRepository.uiState
-    }.collectAsStateWithLifecycle()
-    val shuffleSettings = remember(shuffleProfile, profileId, parentMetaId, parentMetaType) {
-        val profile = if (profileId == com.nuvio.app.features.profiles.ProfileRepository.activeProfileId) shuffleProfile
-            else EpisodeShuffleRepository.readProfile(profileId)
-        profile.settings(parentMetaId, parentMetaType)
-    }
-
     LaunchedEffect(activeVideoId, activeSeasonNumber, activeEpisodeNumber, parentMetaId, parentMetaType) {
         parentalWarnings = emptyList()
         showParentalGuide = false
@@ -514,204 +392,71 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         }
     }
 
-    LaunchedEffect(
-        activeVideoId,
-        activeSeasonNumber,
-        activeEpisodeNumber,
-        parentMetaId,
-        parentMetaType,
-        contentType,
-        playerSettingsUiState.skipIntroEnabled,
-    ) {
+    LaunchedEffect(activeVideoId, activeSeasonNumber, activeEpisodeNumber) {
         skipIntervals = emptyList()
-        autoSkippedIntervals.clear()
-        lastManualSkipSeekPositions = null
         activeSkipInterval = null
         skipIntervalDismissed = false
-        autoSkippedIntervalKeys.clear()
-        playerNotificationMessage = ""
         showNextEpisodeCard = false
         nextEpisodeCardDismissed = false
-        cancelNextEpisodeAutoPlay()
+        nextEpisodeAutoPlayJob?.cancel()
+        nextEpisodeAutoPlaySearching = false
 
-        if (!playerSettingsUiState.skipIntroEnabled) return@LaunchedEffect
-
-        if ((contentType ?: parentMetaType).equals("movie", ignoreCase = true)) {
-            skipIntervals = SkipIntroRepository.getMovieSkipIntervals(parentMetaId, activeVideoId)
-            return@LaunchedEffect
-        }
-
-        val lookup = resolveSkipIntervalLookup(
-            videoId = activeVideoId,
-            season = activeSeasonNumber,
-            episode = activeEpisodeNumber,
-        ) ?: return@LaunchedEffect
+        val season = activeSeasonNumber
+        val episode = activeEpisodeNumber
+        val vid = activeVideoId
+        if (season == null || episode == null || vid == null) return@LaunchedEffect
 
         launch {
             val imdbFromContent = parentMetaId.takeIf { it.startsWith("tt") }
-                ?: (metaUiState.meta ?: playerMeta)
-                    ?.takeIf { it.id == parentMetaId }
-                    ?.imdbId
-                    ?.takeIf { it.startsWith("tt") }
-            val intervals = when (lookup) {
-                is SkipIntervalLookup.Imdb -> SkipIntroRepository.getSkipIntervals(
-                    imdbId = lookup.imdbId,
-                    season = lookup.season,
-                    episode = lookup.episode,
-                )
-                is SkipIntervalLookup.Mal -> SkipIntroRepository.getSkipIntervalsForMal(
-                    malId = lookup.malId,
-                    episode = lookup.episode,
-                    imdbId = imdbFromContent,
-                    imdbSeason = activeSeasonNumber,
-                    imdbEpisode = activeEpisodeNumber ?: lookup.episode,
-                )
-                is SkipIntervalLookup.Kitsu -> SkipIntroRepository.getSkipIntervalsForKitsu(
-                    kitsuId = lookup.kitsuId,
-                    episode = lookup.episode,
-                    imdbId = imdbFromContent,
-                    imdbSeason = activeSeasonNumber,
-                    imdbEpisode = activeEpisodeNumber ?: lookup.episode,
+            val intervals = when {
+                vid.startsWith("mal:") -> {
+                    val malId = vid.removePrefix("mal:").substringBefore(':')
+                    SkipIntroRepository.getSkipIntervalsForMal(malId = malId, episode = episode, imdbId = imdbFromContent, imdbSeason = season, imdbEpisode = episode)
+                }
+                vid.startsWith("kitsu:") -> {
+                    val kitsuId = vid.removePrefix("kitsu:").substringBefore(':')
+                    SkipIntroRepository.getSkipIntervalsForKitsu(kitsuId = kitsuId, episode = episode, imdbId = imdbFromContent, imdbSeason = season, imdbEpisode = episode)
+                }
+                else -> SkipIntroRepository.getSkipIntervals(
+                    imdbId = vid.substringBefore(':').takeIf { it.startsWith("tt") },
+                    season = season,
+                    episode = episode,
                 )
             }
             skipIntervals = intervals
         }
     }
 
-    LaunchedEffect(
-        playbackSnapshot.positionMs,
-        playbackSnapshot.isLoading,
-        skipIntervals,
-        playerSettingsUiState.autoSkipSegmentTypes,
-        playerController,
-        initialLoadCompleted,
-        activeInitialPositionMs,
-        activeInitialProgressFraction,
-        playbackSnapshot.durationMs,
-        playbackSnapshot.isPlaying,
-        playerSettingsUiState.skipIntroEnabled,
-        isScrubbingTimeline,
-        initialSeekApplied,
-        lastManualSkipSeekPositions,
-        playerControllerSourceUrl,
-        activeSourceUrl,
-    ) {
+    LaunchedEffect(playbackSnapshot.positionMs, skipIntervals) {
         if (skipIntervals.isEmpty()) {
             activeSkipInterval = null
             return@LaunchedEffect
         }
-        val initialProgressFraction = activeInitialProgressFraction
-        val initialPlaybackPositionMs = when {
-            activeInitialPositionMs > 0L -> activeInitialPositionMs
-            initialProgressFraction != null && playbackSnapshot.durationMs > 0L -> {
-                val fraction = initialProgressFraction.coerceIn(0f, 1f)
-                (playbackSnapshot.durationMs.toDouble() * fraction.toDouble()).toLong()
-            }
-            else -> 0L
-        }
-        autoSkippedIntervalKeys += skipIntervals.autoSkipKeysCompletedBy(initialPlaybackPositionMs)
         val positionSec = playbackSnapshot.positionMs / 1000.0
-        lastManualSkipSeekPositions?.let { (fromMs, toMs) ->
-            autoSkippedIntervals += skipIntervals.intervalsAtSeekPositions(fromMs, toMs)
-        }
         val current = skipIntervals.firstOrNull { interval ->
-            positionSec >= interval.startTime && positionSec < interval.endTime &&
-                interval.internalSkipAction(skipIntervals, playbackSnapshot.durationMs) != null
+            positionSec >= interval.startTime && positionSec < interval.endTime
         }
         if (current != activeSkipInterval) {
             activeSkipInterval = current
             if (current != null) skipIntervalDismissed = false
         }
-        if (current != null) {
-            val segmentType = AutoSkipSegmentType.fromSkipIntervalType(current.type)
-            val intervalKey = current.autoSkipKey()
-            val controller = playerController
-            if (
-                playerControllerSourceUrl == activeSourceUrl &&
-                playerSettingsUiState.skipIntroEnabled &&
-                playbackSnapshot.isPlaying &&
-                !isScrubbingTimeline && initialSeekApplied &&
-                current.shouldAutoSkip(playerSettingsUiState.autoSkipSegmentTypes) &&
-                current !in autoSkippedIntervals &&
-                initialLoadCompleted &&
-                !playbackSnapshot.isLoading &&
-                controller != null &&
-                segmentType != null &&
-                segmentType in playerSettingsUiState.autoSkipSegmentTypes &&
-                intervalKey !in autoSkippedIntervalKeys
-            ) {
-                val durationMs = playbackSnapshot.durationMs
-                val rawMs = current.internalSkipAction(skipIntervals, durationMs)?.targetMs ?: return@LaunchedEffect
-                val seekPositionMs = if (durationMs > 0L) rawMs.coerceAtMost(durationMs - 1) else rawMs
-                val notification = current.autoSkipNotificationMessage(seekPositionMs)
-                if (!controller.trySeekTo(seekPositionMs)) return@LaunchedEffect
-                autoSkippedIntervalKeys.add(intervalKey)
-                autoSkippedIntervals.add(current)
-                scheduleProgressSyncAfterSeek()
-                skipIntervalDismissed = true
-                notification?.let {
-                    if (isDesktop) {
-                        playerNotificationMessage = it
-                        playerNotificationToken += 1L
-                    } else {
-                        NuvioToastController.show(it, AUTO_SKIP_NOTIFICATION_DURATION_MS)
-                    }
-                }
-            }
-        }
     }
 
-    LaunchedEffect(
-        playerMetaVideos,
-        shuffleSettings,
-        profileId,
-        parentMetaId,
-        activeSeasonNumber,
-        activeEpisodeNumber,
-        watchProgressUiState.entries,
-        watchedUiState.watchedKeys,
-    ) {
+    LaunchedEffect(playerMetaVideos, activeSeasonNumber, activeEpisodeNumber) {
         if (!isSeries || playerMetaVideos.isEmpty()) {
             nextEpisodeInfo = null
             return@LaunchedEffect
         }
         val curSeason = activeSeasonNumber ?: return@LaunchedEffect
         val curEpisode = activeEpisodeNumber ?: return@LaunchedEffect
-        val nextVideo = if (shuffleSettings.enabled) {
-            EpisodeShuffleRepository.shuffle.select(
-                profileId, parentMetaId, playerMetaVideos, shuffleSettings.includeWatched,
-                watchedShuffleEpisodes(parentMetaId, parentMetaType, playerMetaVideos, watchedUiState.watchedKeys),
-                shuffleEpisodeProgress(parentMetaId, watchProgressUiState.entries),
-                ShuffleSurface.PLAYBACK, current = curSeason to curEpisode,
-            )
-        } else {
-            EpisodeShuffleRepository.shuffle.clearSelection(profileId, parentMetaId, ShuffleSurface.PLAYBACK)
-            PlayerNextEpisodeRules.resolveNextEpisode(
-                videos = playerMetaVideos,
-                currentSeason = curSeason,
-                currentEpisode = curEpisode,
-            )
-        }
+        val nextVideo = PlayerNextEpisodeRules.resolveNextEpisode(
+            videos = playerMetaVideos,
+            currentSeason = curSeason,
+            currentEpisode = curEpisode,
+        )
         val nextSeason = nextVideo?.season
         val nextEpisode = nextVideo?.episode
         nextEpisodeInfo = if (nextVideo != null && nextSeason != null && nextEpisode != null) {
-            val playbackVideoId = buildPlaybackVideoId(
-                parentMetaId = parentMetaId,
-                seasonNumber = nextSeason,
-                episodeNumber = nextEpisode,
-                fallbackVideoId = nextVideo.id,
-            )
-            val isWatched = watchProgressUiState.progressForVideo(
-                videoId = playbackVideoId,
-                parentMetaId = parentMetaId,
-                seasonNumber = nextSeason,
-                episodeNumber = nextEpisode,
-            )?.isEffectivelyCompleted == true || WatchingState.isEpisodeWatched(
-                watchedKeys = watchedUiState.watchedKeys,
-                metaType = parentMetaType,
-                metaId = parentMetaId,
-                episode = nextVideo,
-            )
             NextEpisodeInfo(
                 videoId = nextVideo.id,
                 season = nextSeason,
@@ -721,7 +466,6 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
                 overview = nextVideo.overview,
                 released = nextVideo.released,
                 hasAired = PlayerNextEpisodeRules.hasEpisodeAired(nextVideo.released),
-                isWatched = isWatched,
                 unairedMessage = if (!PlayerNextEpisodeRules.hasEpisodeAired(nextVideo.released)) {
                     "$airsPrefix ${nextVideo.released ?: tbaLabel}"
                 } else null,
@@ -729,43 +473,49 @@ private fun PlayerScreenRuntime.BindPlayerMetadataAndSkipEffects() {
         } else null
     }
 
-    LaunchedEffect(playbackSnapshot.isEnded) {
-        if (playbackSnapshot.isEnded && nextEpisodeCardDismissed &&
-            playerSettingsUiState.streamAutoPlayNextEpisodeEnabled &&
-            nextEpisodeInfo?.hasAired == true
-        ) {
-            nextEpisodeCardDismissed = false
-        }
-    }
-
     LaunchedEffect(
-        activePlaybackKey,
-        playbackSnapshot,
-        playbackSnapshotKey,
-        initialSeekApplied,
-        isScrubbingTimeline,
-        errorMessage,
+        playbackSnapshot.positionMs,
+        playbackSnapshot.durationMs,
         nextEpisodeInfo,
         skipIntervals,
         playerSettingsUiState.nextEpisodeThresholdMode,
         playerSettingsUiState.nextEpisodeThresholdPercent,
         playerSettingsUiState.nextEpisodeThresholdMinutesBeforeEnd,
-        playerSettingsUiState.streamAutoPlayNextEpisodeEnabled,
         nextEpisodeCardDismissed,
     ) {
-        val shouldShow = nextEpisodeInfo != null && !nextEpisodeCardDismissed && isAtNextEpisodeThreshold()
-        if (nextEpisodeAutoPlayAutomatic &&
-            (!shouldShow || !playerSettingsUiState.streamAutoPlayNextEpisodeEnabled)
-        ) {
-            cancelNextEpisodeAutoPlay()
+        if (nextEpisodeInfo == null || playbackSnapshot.durationMs <= 0L) {
+            showNextEpisodeCard = false
+            return@LaunchedEffect
         }
-        if (shouldShow && !showNextEpisodeCard) {
+        val shouldShow = PlayerNextEpisodeRules.shouldShowNextEpisodeCard(
+            positionMs = playbackSnapshot.positionMs,
+            durationMs = playbackSnapshot.durationMs,
+            skipIntervals = skipIntervals,
+            thresholdMode = playerSettingsUiState.nextEpisodeThresholdMode,
+            thresholdPercent = playerSettingsUiState.nextEpisodeThresholdPercent,
+            thresholdMinutesBeforeEnd = playerSettingsUiState.nextEpisodeThresholdMinutesBeforeEnd,
+        )
+        if (shouldShow && !showNextEpisodeCard && !nextEpisodeCardDismissed) {
             showNextEpisodeCard = true
             if (playerSettingsUiState.streamAutoPlayNextEpisodeEnabled && nextEpisodeInfo?.hasAired == true) {
-                playNextEpisode(automatic = true)
+                playNextEpisode()
             }
         } else if (!shouldShow) {
             showNextEpisodeCard = false
+        }
+    }
+
+    LaunchedEffect(playbackSnapshot.isEnded, nextEpisodeInfo, nextEpisodeCardDismissed) {
+        if (
+            playbackSnapshot.isEnded &&
+            nextEpisodeInfo != null &&
+            !showNextEpisodeCard &&
+            !nextEpisodeCardDismissed
+        ) {
+            showNextEpisodeCard = true
+            if (playerSettingsUiState.streamAutoPlayNextEpisodeEnabled && nextEpisodeInfo?.hasAired == true) {
+                playNextEpisode()
+            }
         }
     }
 }
@@ -793,7 +543,9 @@ private fun buildNowPlayingSubtitle(
     if (!isEpisode) return null
 
     val episodeParts = buildList {
-        localizedSeasonEpisodeCode(seasonNumber, episodeNumber)?.let { add(it) }
+        if (seasonNumber != null && episodeNumber != null) {
+            add("S${seasonNumber}E${episodeNumber}")
+        }
         episodeTitle?.takeIf { it.isNotBlank() }?.let { add(it) }
     }
 
@@ -820,7 +572,6 @@ internal fun PlayerScreenRuntime.removeFailedStreamFromCache() {
 }
 
 internal fun PlayerScreenRuntime.tryRefreshCredentialedSourceAfterError(message: String?): Boolean {
-    if (ServerStreams.isServerSourceId(activeProviderAddonId)) return retryServerSourceAfterError(message)
     val failedUrl = activeSourceUrl
     if (!failedUrl.hasLikelyExpiringPlaybackCredentials()) return false
     if (credentialRefreshJob?.isActive == true) return true
@@ -843,94 +594,67 @@ internal fun PlayerScreenRuntime.tryRefreshCredentialedSourceAfterError(message:
     controlsVisible = !playerControlsLocked
 
     credentialRefreshJob = scope.launch {
-        try {
-            PlayerStreamsRepository.loadSources(
-                type = type,
-                videoId = currentVideoId,
-                season = season,
-                episode = episode,
-                forceRefresh = true,
+        PlayerStreamsRepository.loadSources(
+            type = type,
+            videoId = currentVideoId,
+            season = season,
+            episode = episode,
+            forceRefresh = true,
+        )
+
+        var refreshedStream: StreamItem? = null
+        var pollCount = 0
+        while (pollCount < CREDENTIAL_REFRESH_POLL_COUNT && refreshedStream == null) {
+            val state = PlayerStreamsRepository.sourceState.value
+            refreshedStream = findCredentialRefreshCandidate(
+                streams = state.groups.flatMap { it.streams },
+                failedUrl = failedUrl,
+                expectedProviderAddonId = expectedProviderAddonId,
+                expectedProviderName = expectedProviderName,
+                expectedStreamTitle = expectedStreamTitle,
+                expectedBingeGroup = expectedBingeGroup,
             )
-
-            var refreshedStream: StreamItem? = null
-            var pollCount = 0
-            while (pollCount < CREDENTIAL_REFRESH_POLL_COUNT && refreshedStream == null) {
-                val state = PlayerStreamsRepository.sourceState.value
-                refreshedStream = findCredentialRefreshCandidate(
-                    streams = state.groups.flatMap { it.streams },
-                    failedUrl = failedUrl,
-                    expectedProviderAddonId = expectedProviderAddonId,
-                    expectedProviderName = expectedProviderName,
-                    expectedStreamTitle = expectedStreamTitle,
-                    expectedBingeGroup = expectedBingeGroup,
-                )
-                if (
-                    refreshedStream != null ||
-                    state.emptyStateReason != null ||
-                    (!state.isAnyLoading && state.groups.isNotEmpty())
-                ) {
-                    break
-                }
-                delay(CREDENTIAL_REFRESH_POLL_INTERVAL_MS)
-                pollCount++
+            if (
+                refreshedStream != null ||
+                state.emptyStateReason != null ||
+                (!state.isAnyLoading && state.groups.isNotEmpty())
+            ) {
+                break
             }
-
-            val stream = refreshedStream
-            if (stream == null) {
-                errorMessage = message
-                controlsVisible = !playerControlsLocked
-                return@launch
-            }
-
-            val refreshedUrl = stream.playableDirectUrl
-            if (refreshedUrl.isNullOrBlank() || refreshedUrl == failedUrl) {
-                errorMessage = message
-                controlsVisible = !playerControlsLocked
-                return@launch
-            }
-
-            flushWatchProgress()
-            stopActiveP2pStream()
-            activeSourceUrl = refreshedUrl
-            activeSourceAudioUrl = null
-            activeSourceHeaders = sanitizePlaybackHeaders(stream.behaviorHints.proxyHeaders?.request)
-            activeSourceResponseHeaders = sanitizePlaybackResponseHeaders(stream.behaviorHints.proxyHeaders?.response)
-            activeStreamType = stream.streamType
-            activeStreamTitle = stream.streamLabel
-            activeStreamSubtitle = stream.streamSubtitle
-            activeProviderName = stream.addonName
-            activeProviderAddonId = stream.addonId
-            currentStreamBingeGroup = stream.behaviorHints.bingeGroup
-            activeInitialPositionMs = savedPositionMs
-            activeInitialProgressFraction = null
-            showSourcesPanel = false
-            controlsVisible = true
-        } finally {
-            PlayerStreamsRepository.stopSourcesLoading()
+            delay(CREDENTIAL_REFRESH_POLL_INTERVAL_MS)
+            pollCount++
         }
-    }
-    return true
-}
 
-private fun PlayerScreenRuntime.retryServerSourceAfterError(message: String?): Boolean {
-    if (credentialRefreshJob?.isActive == true) return true
-    val failedUrl = activeSourceUrl
-    if (credentialRefreshAttemptedSourceUrl == failedUrl) return false
-    credentialRefreshAttemptedSourceUrl = failedUrl
-    val savedPositionMs = playbackSnapshot.positionMs.coerceAtLeast(0L)
-    errorMessage = null
-    credentialRefreshJob = scope.launch {
-        val playback = ServerPlayback.fallback(failedUrl)
-        if (playback == null) {
+        val stream = refreshedStream
+        if (stream == null) {
             errorMessage = message
             controlsVisible = !playerControlsLocked
             return@launch
         }
-        externalSubtitles = playback.subtitles
-        activeSourceUrl = playback.url
-        activeSourceHeaders = playback.headers
+
+        val refreshedUrl = stream.playableDirectUrl
+        if (refreshedUrl.isNullOrBlank() || refreshedUrl == failedUrl) {
+            errorMessage = message
+            controlsVisible = !playerControlsLocked
+            return@launch
+        }
+
+        flushWatchProgress()
+        stopActiveP2pStream()
+        activeSourceUrl = refreshedUrl
+        activeSourceAudioUrl = null
+        activeSourceHeaders = sanitizePlaybackHeaders(stream.behaviorHints.proxyHeaders?.request)
+        activeSourceResponseHeaders = sanitizePlaybackResponseHeaders(stream.behaviorHints.proxyHeaders?.response)
+        activeStreamType = stream.streamType
+        activeStreamTitle = stream.streamLabel
+        activeStreamSubtitle = stream.streamSubtitle
+        activeProviderName = stream.addonName
+        activeProviderAddonId = stream.addonId
+        currentStreamBingeGroup = stream.behaviorHints.bingeGroup
         activeInitialPositionMs = savedPositionMs
         activeInitialProgressFraction = null
+        showSourcesPanel = false
+        controlsVisible = true
     }
     return true
 }
