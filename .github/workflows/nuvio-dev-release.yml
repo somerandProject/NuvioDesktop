@@ -330,9 +330,12 @@ jobs:
         # back to the debug keystore (androidApp/build.gradle.kts) which keeps
         # the APK installable for sideloading. ABI splits produce one APK per
         # architecture.
-        run: >-
-          ./gradlew :androidApp:assembleFullRelease
-          --no-configuration-cache --no-daemon --stacktrace
+        run: |
+          set -euo pipefail
+          # The vendored copy was committed from Windows, so gradlew lost its
+          # executable bit.
+          chmod +x gradlew
+          ./gradlew :androidApp:assembleFullRelease --no-configuration-cache --no-daemon --stacktrace
       - name: Collect artifacts
         shell: bash
         run: |
