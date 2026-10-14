@@ -1,6 +1,7 @@
 package com.nuvio.app.features.addons
 
 import io.ktor.client.HttpClient
+import io.ktor.client.call.body
 import io.ktor.client.engine.darwin.Darwin
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.accept
@@ -11,7 +12,6 @@ import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
 import io.ktor.client.statement.bodyAsText
-import io.ktor.client.call.body
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -137,23 +137,6 @@ actual suspend fun httpGetTextWithHeaders(
             payload
         }
 
-actual suspend fun httpGetBytesWithHeaders(
-    url: String,
-    headers: Map<String, String>,
-): ByteArray =
-    addonHttpClient
-        .get(url) {
-            headers.forEach { (key, value) ->
-                header(key, value)
-            }
-        }
-        .let { response ->
-            if (!response.status.isSuccess()) {
-                error(runBlocking { getString(Res.string.network_request_failed_http, response.status.value) })
-            }
-            response.body()
-        }
-
 actual suspend fun httpPostJsonWithHeaders(
     url: String,
     body: String,
@@ -186,6 +169,7 @@ actual suspend fun httpRequestRaw(
     body: String,
     followRedirects: Boolean,
     maxResponseBodyBytes: Int,
+    bodyBytes: ByteArray?,
 ): RawHttpResponse =
     addonHttpClient
         .request {
@@ -195,15 +179,19 @@ actual suspend fun httpRequestRaw(
                 header(key, value)
             }
             if (this.method == HttpMethod.Post || this.method == HttpMethod.Put || this.method == HttpMethod.Patch) {
-                setBody(body)
+                setBody(bodyBytes ?: body)
             }
         }
         .let { response ->
+            val receivedBytes = response.body<ByteArray>()
+            val limitedBytes = receivedBytes.copyOf(minOf(receivedBytes.size, maxResponseBodyBytes.coerceAtLeast(0)))
+            val decoded = limitedBytes.decodeToString()
             RawHttpResponse(
                 status = response.status.value,
                 statusText = response.status.description,
                 url = response.call.request.url.toString(),
-                body = response.bodyAsText(),
+                body = if (receivedBytes.size > limitedBytes.size) "$decoded\n...[truncated]" else decoded,
+                bodyBytes = limitedBytes,
                 headers = response.headers.entries().associate { (name, values) ->
                     name.lowercase() to values.joinToString(",")
                 },
