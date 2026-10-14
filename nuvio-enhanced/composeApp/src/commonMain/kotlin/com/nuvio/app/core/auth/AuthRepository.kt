@@ -240,7 +240,16 @@ object AuthRepository {
 
     private fun isInvalidRemoteSessionError(error: Throwable): Boolean {
         val restError = error.findCause<RestException>()
-        if (restError?.statusCode == 401 || restError?.statusCode == 403) return true
+        // 401 Unauthorized always means the token is no longer valid.
+        if (restError?.statusCode == 401) return true
+        // A 403 can also be an auth rejection, but PostgREST returns 403 for
+        // plain database permission errors (e.g. "permission denied for
+        // function sync_pull_profiles"). Those are a server configuration
+        // problem and must NOT sign the user out, so only treat auth 403s as a
+        // dead session.
+        if (restError?.statusCode == 403) {
+            return error.findCause<AuthRestException>() != null
+        }
 
         val message = buildString {
             append(error.message.orEmpty())

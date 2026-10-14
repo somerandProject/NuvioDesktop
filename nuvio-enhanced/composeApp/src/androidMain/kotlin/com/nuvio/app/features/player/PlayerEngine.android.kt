@@ -1020,6 +1020,7 @@ private fun LibmpvPlayerSurface(
     val latestPlayWhenReady = rememberUpdatedState(playWhenReady)
     val coroutineScope = rememberCoroutineScope()
     val playbackDiagnostics = remember { PlaybackDiagnostics() }
+    val videoRecoveryAttempted = remember(sourceUrl) { java.util.concurrent.atomic.AtomicBoolean(false) }
     val sanitizedSourceHeaders = remember(sourceHeaders) {
         sanitizePlaybackHeaders(sourceHeaders)
     }
@@ -1148,6 +1149,20 @@ private fun LibmpvPlayerSurface(
                     "mpv_log level=$level prefix=${diagnosticPlayerMessage(prefix)} " +
                         "message=${diagnosticPlayerMessage(text)}",
                 )
+                // Safety net: if the video output failed to initialise (e.g. the
+                // surface was not ready in time), re-apply the VO and reload so
+                // the picture appears instead of a black screen.
+                if (text.contains("Failed initializing any suitable GPU context") ||
+                    text.contains("Error opening/initializing the selected video_out")
+                ) {
+                    // Only try once per source so a genuinely unsupported device
+                    // cannot get stuck in a reload loop.
+                    if (videoRecoveryAttempted.compareAndSet(false, true)) {
+                        coroutineScope.launch(Dispatchers.Main.immediate) {
+                            view.recoverVideoOutput()
+                        }
+                    }
+                }
             }
         }
         view.mpv.addObserver(observer)
@@ -1274,13 +1289,22 @@ private class NuvioLibmpvView(
     override fun initOptions() {
         setVo(videoOutput.mpvValue)
         mpv.setOptionString("profile", "fast")
-        mpv.setOptionString("hwdec", if (hardwareDecodingEnabled) "auto" else "no")
+        // auto-safe avoids the flaky hardware decoders that auto may pick and
+        // that cause stutter or a stuck first frame on some devices.
+        mpv.setOptionString("hwdec", if (hardwareDecodingEnabled) "auto-safe" else "no")
         if (yuv420pEnabled) {
             mpv.setOptionString("vf", "format=yuv420p")
         }
         mpv.setOptionString("msg-level", "all=warn")
         mpv.setOptionString("tls-verify", "yes")
         mpv.setOptionString("tls-ca-file", "${context.filesDir.path}/cacert.pem")
+        // Buffer ahead so playback stays smooth after a slow start, but keep
+        // the initial wait short so playback begins quickly.
+        mpv.setOptionString("cache", "yes")
+        mpv.setOptionString("cache-pause", "yes")
+        mpv.setOptionString("cache-pause-wait", "1")
+        mpv.setOptionString("demuxer-readahead-secs", "20")
+        mpv.setOptionString("cache-secs", "20")
         mpv.setOptionString("demuxer-max-bytes", "${libmpvCacheBytes()}").logIfMpvError("demuxer-max-bytes")
         mpv.setOptionString("demuxer-max-back-bytes", "${libmpvCacheBytes()}").logIfMpvError("demuxer-max-back-bytes")
         mpv.setOptionString("vd-lavc-film-grain", "cpu")
@@ -1317,9 +1341,25 @@ private class NuvioLibmpvView(
         props.forEach { (name, format) -> mpv.observeProperty(name, format) }
     }
 
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        // The base class attaches the native surface to mpv here. Only after
+        // this point is it safe to load a file: loading earlier made
+        // vo=gpu-next fail with "Missing surface pointer" (black screen).
+        super.surfaceCreated(holder)
+        surfaceReady = holder.surface?.isValid == true
+        if (surfaceReady) {
+            syncMpvSurfaceSize()
+            pendingLoadPlayWhenReady?.let(::loadCurrentSourceNow)
+        }
+    }
+
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         super.surfaceChanged(holder, format, width, height)
-        updateSurfaceSize(width, height)
+        // surfaceChanged always follows surfaceCreated, so the surface is
+        // attached by now; record the size and flush any pending load.
+        if (surfaceReady && updateSurfaceSize(width, height)) {
+            pendingLoadPlayWhenReady?.let(::loadCurrentSourceNow)
+        }
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -1331,7 +1371,14 @@ private class NuvioLibmpvView(
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
-        updateSurfaceSize(width, height)
+        // Layout can run before surfaceCreated, so this only records the size;
+        // the actual load is flushed from surfaceCreated/surfaceChanged.
+        if (surfaceReady) {
+            updateSurfaceSize(width, height)
+        } else if (width > 0 && height > 0) {
+            lastSurfaceWidth = width
+            lastSurfaceHeight = height
+        }
     }
 
     fun loadSource(
@@ -1363,6 +1410,22 @@ private class NuvioLibmpvView(
         }
     }
 
+    /**
+     * Fallback for when mpv could not create the video output (black screen
+     * with audio) because the surface was not attached when playback started:
+     * re-apply the VO and reload the current source now that a surface exists.
+     */
+    fun recoverVideoOutput() {
+        if (!surfaceReady) return
+        executeMpv {
+            mpv.setPropertyString("vo", videoOutput.mpvValue)
+            mpv.setPropertyString("force-window", "yes")
+            syncMpvSurfaceSize()
+            val sourceUrl = currentSourceUrl ?: return@executeMpv
+            mpv.command("loadfile", sourceUrl.toLibmpvLoadPath(), "replace")
+        }
+    }
+
     private fun loadCurrentSourceNow(playWhenReady: Boolean) {
         val sourceUrl = currentSourceUrl ?: return
         if (!surfaceReady) {
@@ -1388,9 +1451,8 @@ private class NuvioLibmpvView(
         setPausedNow(!playWhenReady)
     }
 
-    private fun updateSurfaceSize(width: Int, height: Int) {
-        if (width <= 0 || height <= 0) return
-        surfaceReady = true
+    private fun updateSurfaceSize(width: Int, height: Int): Boolean {
+        if (width <= 0 || height <= 0) return false
         val changed = width != lastSurfaceWidth || height != lastSurfaceHeight
         lastSurfaceWidth = width
         lastSurfaceHeight = height
@@ -1401,7 +1463,7 @@ private class NuvioLibmpvView(
             post { syncMpvSurfaceSize() }
             postDelayed({ syncMpvSurfaceSize() }, LibmpvSurfaceResizeSettleDelayMs)
         }
-        pendingLoadPlayWhenReady?.let(::loadCurrentSourceNow)
+        return changed
     }
 
     private fun syncMpvSurfaceSize() {
