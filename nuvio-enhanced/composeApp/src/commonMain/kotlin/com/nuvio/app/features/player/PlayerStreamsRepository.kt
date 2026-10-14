@@ -627,7 +627,7 @@ object PlayerStreamsRepository {
 }
 
 private const val PLAYER_CLOUDSTREAM_STREAM_PROVIDER_CONCURRENCY = 12
-private const val PLAYER_STREAM_PROVIDER_TIMEOUT_MS = 25_000L
+private const val PLAYER_STREAM_PROVIDER_TIMEOUT_MS = 120_000L
 
 private data class PlayerInstalledStreamAddonTarget(
     val addonName: String,
