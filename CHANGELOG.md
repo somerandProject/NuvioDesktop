@@ -4,6 +4,19 @@ All notable changes to this personal NuvioDev fork are documented here.
 This fork tracks the upstream [Nuvio Desktop](https://github.com/NuvioMedia/NuvioDesktop)
 project; all original work is credited there.
 
+## Android app is now NuvioMobile-Enhanced
+
+- The Android APK is built from [NuvioMobile-Enhanced](https://github.com/yesnt10/NuvioMobile-Enhanced),
+  vendored under `nuvio-enhanced/` as a self-contained Gradle project. The
+  previous "official Nuvio" mobile source (built from the root project's
+  `androidApp`) is no longer built or shipped.
+- The Enhanced Android release `applicationId` is `com.nuvio.enhanced`, which
+  is distinct from the official Nuvio Enhanced app, so it can be installed
+  alongside it.
+- **Desktop packages are untouched.** The Windows MSI, Linux AppImage and
+  macOS builds still use the root `composeApp`, which this change does not
+  modify. Keeping Enhanced in its own Gradle build is what guarantees that.
+
 ## 0.3-alpha
 
 - **Android**: the release workflow now also builds **sideload APKs** (arm64-v8a,
