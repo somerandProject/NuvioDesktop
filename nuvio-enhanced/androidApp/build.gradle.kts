@@ -61,18 +61,20 @@ android {
 
     signingConfigs {
         create("release") {
-            if (legacyUpdateCompatSigning && legacyUpdateCompatKeystore.exists()) {
+            if (releaseKeystore != null && releaseStorePassword != null && releaseKeyAlias != null && releaseKeyPassword != null) {
+                // Preferred: a stable release keystore (e.g. supplied by CI secrets)
+                // so successive builds update each other in place.
+                storeFile = releaseKeystore
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            } else if (legacyUpdateCompatSigning && legacyUpdateCompatKeystore.exists()) {
                 // Build 97 shipped with the Android debug certificate. Keep this signing
                 // certificate for package-update compatibility until a planned migration.
                 storeFile = legacyUpdateCompatKeystore
                 storePassword = "android"
                 keyAlias = "androiddebugkey"
                 keyPassword = "android"
-            } else if (releaseKeystore != null && releaseStorePassword != null && releaseKeyAlias != null && releaseKeyPassword != null) {
-                storeFile = releaseKeystore
-                storePassword = releaseStorePassword
-                keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
             }
         }
     }
