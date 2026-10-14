@@ -593,7 +593,6 @@ private fun PlaybackSettingsSection(
                         },
                     )
                 }
-                }
             }
         }
 
