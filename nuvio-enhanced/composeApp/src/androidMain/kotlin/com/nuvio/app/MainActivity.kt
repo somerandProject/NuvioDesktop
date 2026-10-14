@@ -12,6 +12,7 @@ import androidx.activity.SystemBarStyle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.nuvio.app.core.auth.AuthStorage
+import com.nuvio.app.core.auth.SupabaseSessionStorage
 import com.nuvio.app.core.diagnostics.CrashDiagnostics
 import com.nuvio.app.core.diagnostics.SentryInitializer
 import com.nuvio.app.core.deeplink.handleAppUrl
@@ -105,6 +106,7 @@ open class MainActivity : AppCompatActivity() {
         CloudStreamPlatformStorage.initialize(this)
         AiAssistantSettingsStorage.initialize(applicationContext)
         AuthStorage.initialize(applicationContext)
+        SupabaseSessionStorage.initialize(applicationContext)
         DnsOverHttpsSettingsStorage.initialize(applicationContext)
         LibraryStorage.initialize(applicationContext)
         FavoritePeopleStorage.initialize(applicationContext)
