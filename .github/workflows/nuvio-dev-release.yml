@@ -309,25 +309,29 @@ jobs:
           else
             touch local.properties
           fi
+          cp local.properties nuvio-enhanced/local.properties
       - name: Validate local.properties
         shell: bash
         run: |
           set -euo pipefail
           for key in NUVIO_SUPABASE_URL NUVIO_SUPABASE_ANON_KEY TRAKT_CLIENT_ID SIMKL_CLIENT_ID MDBLIST_CLIENT_ID; do
-            if ! grep -Eq "^${key}=..+" local.properties; then
+            if ! grep -Eq "^${key}=..+" nuvio-enhanced/local.properties; then
               echo "::error::local.properties is missing ${key} - the Android APK would bake in blank auth config."
               exit 1
             fi
           done
       - name: Build full release APKs
         shell: bash
+        # The Android app is NuvioMobile-Enhanced, vendored under
+        # nuvio-enhanced/ as a self-contained Gradle project so the desktop
+        # build (which shares the root composeApp) is never involved.
+        working-directory: nuvio-enhanced
         # No release keystore is configured for this fork, so the build falls
         # back to the debug keystore (androidApp/build.gradle.kts) which keeps
         # the APK installable for sideloading. ABI splits produce one APK per
         # architecture.
         run: >-
           ./gradlew :androidApp:assembleFullRelease
-          "-Pnuvio.app.versionName=${VERSION}"
           --no-configuration-cache --no-daemon --stacktrace
       - name: Collect artifacts
         shell: bash
@@ -335,7 +339,7 @@ jobs:
           set -euo pipefail
           mkdir -p out
           shopt -s nullglob
-          for apk in androidApp/build/outputs/apk/full/release/*.apk; do
+          for apk in nuvio-enhanced/androidApp/build/outputs/apk/full/release/*.apk; do
             base="$(basename "${apk}")"
             abi="$(echo "${base}" | grep -oE 'arm64-v8a|armeabi-v7a|x86_64|x86' | head -n1 || true)"
             if [[ -n "${abi}" ]]; then
@@ -346,7 +350,7 @@ jobs:
           done
           if ! compgen -G "out/*.apk" >/dev/null; then
             echo "No APKs produced." >&2
-            find androidApp/build/outputs -name '*.apk' >&2 || true
+            find nuvio-enhanced/androidApp/build/outputs -name '*.apk' >&2 || true
             exit 1
           fi
           ls -la out
