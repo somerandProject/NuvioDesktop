@@ -1,10 +1,11 @@
 package com.nuvio.app.core.sync
 
 import co.touchlab.kermit.Logger
-import com.nuvio.app.isDesktop
 import com.nuvio.app.core.auth.AuthRepository
 import com.nuvio.app.core.auth.AuthState
 import com.nuvio.app.core.network.SupabaseProvider
+import com.nuvio.app.features.ai.AiAssistantSettingsRepository
+import com.nuvio.app.features.ai.AiProvider
 import com.nuvio.app.features.collection.CollectionMobileSettingsRepository
 import com.nuvio.app.features.collection.CollectionMobileSettingsStorage
 import com.nuvio.app.features.debrid.DebridSettingsRepository
@@ -18,12 +19,10 @@ import com.nuvio.app.features.notifications.EpisodeReleaseNotificationsRepositor
 import com.nuvio.app.features.player.PlayerSettingsStorage
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.profiles.ProfileRepository
-import com.nuvio.app.core.ui.CardDepthStyleRepository
-import com.nuvio.app.core.ui.CardDepthStyleStorage
+import com.nuvio.app.features.settings.NuvioEnhancedSettingsRepository
 import com.nuvio.app.core.ui.PosterCardStyleRepository
-import com.nuvio.app.core.poster.CustomPosterUrlRepository
-import com.nuvio.app.core.poster.CustomPosterUrlStorage
 import com.nuvio.app.core.ui.PosterCardStyleStorage
+import com.nuvio.app.core.ui.toThemeHex
 import com.nuvio.app.features.settings.ThemeSettingsStorage
 import com.nuvio.app.features.settings.ThemeSettingsRepository
 import com.nuvio.app.features.streams.StreamBadgeSettingsRepository
@@ -33,7 +32,7 @@ import com.nuvio.app.features.tmdb.TmdbSettingsRepository
 import com.nuvio.app.features.trakt.TraktCommentsStorage
 import com.nuvio.app.features.trakt.TraktCommentsSettings
 import com.nuvio.app.features.trakt.TraktSettingsStorage
-import com.nuvio.app.features.tracking.TrackingSettingsRepository
+import com.nuvio.app.features.trakt.TraktSettingsRepository
 import com.nuvio.app.features.watchprogress.ContinueWatchingPreferencesStorage
 import com.nuvio.app.features.watchprogress.ContinueWatchingPreferencesRepository
 import io.github.jan.supabase.postgrest.postgrest
@@ -44,6 +43,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -54,6 +54,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -62,7 +63,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
 
-private const val PUSH_DEBOUNCE_MS = 500L
+private const val PUSH_DEBOUNCE_MS = 1500L
 
 object ProfileSettingsSync {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -84,14 +85,9 @@ object ProfileSettingsSync {
 
     private var observeJob: Job? = null
 
-    private val profileSettingsPlatform: String
-        get() = if (isDesktop) DESKTOP_SYNC_PLATFORM else MOBILE_SYNC_PLATFORM
-
     fun startObserving() {
         if (observeJob?.isActive == true) return
         ensureRepositoriesLoaded()
-        ProviderCredentialSync.startObserving()
-        MediaServerSync.startObserving()
         observeLocalChangesAndPush()
     }
 
@@ -99,14 +95,8 @@ object ProfileSettingsSync {
         observeJob?.cancel()
         observeJob = null
         skipNextPushSignature = null
-        ProviderCredentialSync.clearAccountState()
-        MediaServerSync.clearAccountState()
-    }
-
-    fun onProfileChanged() {
-        if (observeJob?.isActive != true) return
-        skipNextPushSignature = currentObservedStateSignature()
-        ProviderCredentialSync.onProfileChanged()
+        isApplyingRemoteBlob = false
+        isServerSyncInFlight = false
     }
 
     suspend fun pull(profileId: Int): Boolean {
@@ -124,7 +114,7 @@ object ProfileSettingsSync {
 
                 val params = buildJsonObject {
                     put("p_profile_id", profileId)
-                    put("p_platform", profileSettingsPlatform)
+                    put("p_platform", MOBILE_SYNC_PLATFORM)
                 }
                 val result = SupabaseProvider.client.postgrest.rpc("sync_pull_profile_settings_blob", params)
                 if (ProfileRepository.activeProfileId != profileId) return@withLock false
@@ -133,6 +123,9 @@ object ProfileSettingsSync {
 
                 if (remoteJson == null) {
                     log.i { "pull(profileId=$profileId) — no remote settings blob found" }
+                    if (localSignature != defaultSignature()) {
+                        pushToRemoteLocked(profileId, localBlob)
+                    }
                     return@withLock false
                 }
 
@@ -144,6 +137,7 @@ object ProfileSettingsSync {
                         log.e(error) { "pull(profileId=$profileId) — failed to decode remote settings blob" }
                         return@withLock false
                     }
+
                     val remoteSignature = buildSignature(remoteBlob)
                     if (remoteSignature == localSignature) {
                         log.d { "pull(profileId=$profileId) — remote matches local" }
@@ -168,35 +162,48 @@ object ProfileSettingsSync {
         }
     }
 
-    suspend fun pushCurrentProfileToRemote(): Boolean {
+    suspend fun pushCurrentProfileToRemote() {
         ensureRepositoriesLoaded()
-        return syncMutex.withLock {
+        syncMutex.withLock {
             runCatching {
                 val profileId = ProfileRepository.activeProfileId
                 val blob = exportSettingsBlob()
-                if (ProfileRepository.activeProfileId != profileId) return@runCatching false
+                if (ProfileRepository.activeProfileId != profileId) return@runCatching
                 pushToRemoteLocked(profileId, blob)
-                true
             }.onFailure { error ->
                 log.e(error) { "pushCurrentProfileToRemote() — FAILED" }
-            }.getOrDefault(false)
+            }
         }
     }
+
+    fun exportBackupJson(): String {
+        ensureRepositoriesLoaded()
+        return json.encodeToString(MobileProfileSettingsBlob.serializer(), exportSettingsBlob())
+    }
+
+    fun importBackupJson(payload: String): Result<Unit> =
+        runCatching {
+            val blob = json.decodeFromString<MobileProfileSettingsBlob>(payload.trim())
+            ensureRepositoriesLoaded()
+            isApplyingRemoteBlob = true
+            try {
+                applyRemoteBlob(blob)
+                skipNextPushSignature = currentObservedStateSignature()
+            } finally {
+                isApplyingRemoteBlob = false
+            }
+        }
 
     @OptIn(FlowPreview::class)
     private fun observeLocalChangesAndPush() {
         val signatureFlows = listOf(
-            ThemeSettingsRepository.selectedThemePreference.map { "theme" },
-            ThemeSettingsRepository.customThemePreference.map { "custom_theme_colors" },
+            ThemeSettingsRepository.selectedTheme.map { "theme" },
+            ThemeSettingsRepository.customThemeFirstColor.map { "theme_custom_first" },
+            ThemeSettingsRepository.customThemeSecondColor.map { "theme_custom_second" },
             ThemeSettingsRepository.amoledEnabled.map { "amoled" },
             ThemeSettingsRepository.liquidGlassNativeTabBarEnabled.map { "liquid_glass_tab_bar" },
-            ThemeSettingsRepository.desktopNavigationLayout.map { "desktop_navigation_layout" },
-            ThemeSettingsRepository.navBarGlowEnabled.map { "nav_bar_glow_enabled" },
-            ThemeSettingsRepository.navBarStyle.map { "nav_bar_style" },
+            ThemeSettingsRepository.liquidGlassAutoHideOnScrollEnabled.map { "liquid_glass_auto_hide" },
             PosterCardStyleRepository.uiState.map { "poster_card_style" },
-            CustomPosterUrlRepository.pattern.map { "custom_poster_url" },
-            CustomPosterUrlRepository.enabledScreens.map { "custom_poster_screens" },
-            CardDepthStyleRepository.uiState.map { "card_depth_style" },
             PlayerSettingsRepository.uiState.map { "player" },
             StreamBadgeSettingsRepository.uiState.map { "stream_badges" },
             DebridSettingsRepository.uiState.map { "debrid" },
@@ -205,21 +212,22 @@ object ProfileSettingsSync {
             MetaScreenSettingsRepository.uiState.map { "meta" },
             CollectionMobileSettingsRepository.uiState.map { "collection_mobile_settings" },
             ContinueWatchingPreferencesRepository.uiState.map { "continue_watching" },
-            TrackingSettingsRepository.uiState.map { "trakt_settings" },
+            TraktSettingsRepository.uiState.map { "trakt_settings" },
             TraktCommentsSettings.enabled.map { "trakt_comments" },
             EpisodeReleaseNotificationsRepository.uiState.map { "episode_release_alerts" },
+            NuvioEnhancedSettingsRepository.uiState.map { "nuvio_enhanced" },
+            AiAssistantSettingsRepository.uiState.map { "ai_assistant" },
         )
 
         observeJob = scope.launch {
             combine(signatureFlows) { currentObservedStateSignature() }
-                .distinctUntilChanged()
                 .drop(1)
+                .distinctUntilChanged()
                 .debounce(PUSH_DEBOUNCE_MS)
                 .collect { signature ->
                     val authState = AuthRepository.state.value
                     if (authState !is AuthState.Authenticated || authState.isAnonymous) return@collect
                     if (isApplyingRemoteBlob || isServerSyncInFlight) return@collect
-                    if (signature != currentObservedStateSignature()) return@collect
                     if (signature == skipNextPushSignature) {
                         skipNextPushSignature = null
                         return@collect
@@ -232,7 +240,7 @@ object ProfileSettingsSync {
     private suspend fun pushToRemoteLocked(profileId: Int, blob: MobileProfileSettingsBlob) {
         val params = buildJsonObject {
             put("p_profile_id", profileId)
-            put("p_platform", profileSettingsPlatform)
+            put("p_platform", MOBILE_SYNC_PLATFORM)
             put("p_settings_json", json.encodeToJsonElement(MobileProfileSettingsBlob.serializer(), blob))
             putSyncOriginClientId()
         }
@@ -246,27 +254,11 @@ object ProfileSettingsSync {
             features = MobileProfileSettingsFeatures(
                 themeSettings = ThemeSettingsStorage.exportToSyncPayload(),
                 posterCardStyleSettingsPayload = PosterCardStyleStorage.loadPayload().orEmpty().trim(),
-                customPosterUrlPattern = CustomPosterUrlStorage.loadPattern().orEmpty().trim(),
-                customPosterEnabledScreens = CustomPosterUrlStorage.loadEnabledScreens()
-                    ?.joinToString(",").orEmpty(),
-                cardDepthStyleSettingsPayload = CardDepthStyleStorage.loadPayload().orEmpty().trim(),
-                playerSettings = withoutProfileCredentials(
-                    PROFILE_PLAYER_SETTINGS_FEATURE,
-                    PlayerSettingsStorage.exportToSyncPayload(),
-                ),
+                playerSettings = PlayerSettingsStorage.exportToSyncPayload(),
                 streamBadgeSettings = StreamBadgeSettingsStorage.exportToSyncPayload(),
-                debridSettings = withoutProfileCredentials(
-                    PROFILE_DEBRID_SETTINGS_FEATURE,
-                    DebridSettingsStorage.exportToSyncPayload(),
-                ),
-                tmdbSettings = withoutProfileCredentials(
-                    PROFILE_TMDB_SETTINGS_FEATURE,
-                    TmdbSettingsStorage.exportToSyncPayload(),
-                ),
-                mdbListSettings = withoutProfileCredentials(
-                    PROFILE_MDBLIST_SETTINGS_FEATURE,
-                    MdbListSettingsStorage.exportToSyncPayload(),
-                ),
+                debridSettings = DebridSettingsStorage.exportToSyncPayload(),
+                tmdbSettings = TmdbSettingsStorage.exportToSyncPayload(),
+                mdbListSettings = MdbListSettingsStorage.exportToSyncPayload(),
                 metaScreenSettingsPayload = MetaScreenSettingsStorage.loadPayload().orEmpty().trim(),
                 collectionMobileSettingsPayload = CollectionMobileSettingsStorage.loadPayload().orEmpty().trim(),
                 continueWatchingSettingsPayload = ContinueWatchingPreferencesStorage.loadPayload().orEmpty().trim(),
@@ -275,6 +267,8 @@ object ProfileSettingsSync {
                 notificationsSettings = NotificationsSettingsPayload(
                     episodeReleaseAlertsEnabled = EpisodeReleaseNotificationsRepository.uiState.value.isEnabled,
                 ),
+                nuvioEnhancedSettingsPayload = NuvioEnhancedSettingsRepository.exportPayload(),
+                aiAssistantSettings = exportAiAssistantSettingsPayload(),
             ),
         )
     }
@@ -286,58 +280,19 @@ object ProfileSettingsSync {
         PosterCardStyleStorage.savePayload(blob.features.posterCardStyleSettingsPayload)
         PosterCardStyleRepository.onProfileChanged()
 
-        CustomPosterUrlStorage.savePattern(blob.features.customPosterUrlPattern.ifBlank { null })
-        val remoteScreenKeys = blob.features.customPosterEnabledScreens
-            .takeIf { it.isNotBlank() }
-            ?.split(",")
-            ?.toSet()
-        CustomPosterUrlStorage.saveEnabledScreens(remoteScreenKeys)
-        CustomPosterUrlRepository.onProfileChanged()
-        com.nuvio.app.features.home.HomeRepository.applyCurrentSettings()
-
-        CardDepthStyleStorage.savePayload(blob.features.cardDepthStyleSettingsPayload)
-        CardDepthStyleRepository.onProfileChanged()
-
-        val localPlayerSettings = PlayerSettingsStorage.exportToSyncPayload()
-        val localIntroDbApiKey = PlayerSettingsStorage.loadIntroDbApiKey()
-        PlayerSettingsStorage.replaceFromSyncPayload(
-            preservingLocalProfileCredentials(
-                PROFILE_PLAYER_SETTINGS_FEATURE,
-                blob.features.playerSettings,
-                localPlayerSettings,
-            ),
-        )
-        localIntroDbApiKey?.let(PlayerSettingsStorage::saveIntroDbApiKey)
+        PlayerSettingsStorage.replaceFromSyncPayload(blob.features.playerSettings)
         PlayerSettingsRepository.onProfileChanged()
 
         StreamBadgeSettingsStorage.replaceFromSyncPayload(blob.features.streamBadgeSettings)
         StreamBadgeSettingsRepository.onProfileChanged()
 
-        DebridSettingsStorage.replaceFromSyncPayload(
-            preservingLocalProfileCredentials(
-                PROFILE_DEBRID_SETTINGS_FEATURE,
-                blob.features.debridSettings,
-                DebridSettingsStorage.exportToSyncPayload(),
-            ),
-        )
+        DebridSettingsStorage.replaceFromSyncPayload(blob.features.debridSettings)
         DebridSettingsRepository.onProfileChanged()
 
-        TmdbSettingsStorage.replaceFromSyncPayload(
-            preservingLocalProfileCredentials(
-                PROFILE_TMDB_SETTINGS_FEATURE,
-                blob.features.tmdbSettings,
-                TmdbSettingsStorage.exportToSyncPayload(),
-            ),
-        )
+        TmdbSettingsStorage.replaceFromSyncPayload(blob.features.tmdbSettings)
         TmdbSettingsRepository.onProfileChanged()
 
-        MdbListSettingsStorage.replaceFromSyncPayload(
-            preservingLocalProfileCredentials(
-                PROFILE_MDBLIST_SETTINGS_FEATURE,
-                blob.features.mdbListSettings,
-                MdbListSettingsStorage.exportToSyncPayload(),
-            ),
-        )
+        MdbListSettingsStorage.replaceFromSyncPayload(blob.features.mdbListSettings)
         MdbListMetadataService.clearCache()
         MdbListSettingsRepository.onProfileChanged()
 
@@ -351,19 +306,23 @@ object ProfileSettingsSync {
         ContinueWatchingPreferencesRepository.onProfileChanged()
 
         TraktSettingsStorage.savePayload(blob.features.traktSettingsPayload)
-        TrackingSettingsRepository.onProfileChanged()
+        TraktSettingsRepository.onProfileChanged()
 
         TraktCommentsStorage.replaceFromSyncPayload(blob.features.traktCommentsSettings)
         TraktCommentsSettings.onProfileChanged()
 
         EpisodeReleaseNotificationsRepository.applyFromSyncEnabled(blob.features.notificationsSettings.episodeReleaseAlertsEnabled)
+
+        blob.features.nuvioEnhancedSettingsPayload
+            .takeIf { it.isNotBlank() }
+            ?.let(NuvioEnhancedSettingsRepository::replacePayload)
+
+        applyAiAssistantSettingsPayload(blob.features.aiAssistantSettings)
     }
 
     private fun ensureRepositoriesLoaded() {
         ThemeSettingsRepository.ensureLoaded()
         PosterCardStyleRepository.ensureLoaded()
-        CustomPosterUrlRepository.ensureLoaded()
-        CardDepthStyleRepository.ensureLoaded()
         PlayerSettingsRepository.ensureLoaded()
         StreamBadgeSettingsRepository.ensureLoaded()
         DebridSettingsRepository.ensureLoaded()
@@ -372,25 +331,27 @@ object ProfileSettingsSync {
         MetaScreenSettingsRepository.ensureLoaded()
         CollectionMobileSettingsRepository.ensureLoaded()
         ContinueWatchingPreferencesRepository.ensureLoaded()
-        TrackingSettingsRepository.ensureLoaded()
+        TraktSettingsRepository.ensureLoaded()
         TraktCommentsSettings.ensureLoaded()
         EpisodeReleaseNotificationsRepository.ensureLoaded()
+        NuvioEnhancedSettingsRepository.ensureLoaded()
+        AiAssistantSettingsRepository.ensureLoaded()
     }
 
     private fun buildSignature(blob: MobileProfileSettingsBlob): String =
         json.encodeToString(MobileProfileSettingsBlob.serializer(), blob)
 
+    private fun defaultSignature(): String =
+        buildSignature(MobileProfileSettingsBlob())
+
     private fun currentObservedStateSignature(): String = listOf(
-        "theme=${ThemeSettingsRepository.selectedThemePreference.value?.name}",
-        "custom_theme_colors=${ThemeSettingsRepository.customThemePreference.value}",
+        "theme=${ThemeSettingsRepository.selectedTheme.value.name}",
+        "theme_custom_first=${ThemeSettingsRepository.customThemeFirstColor.value.toThemeHex()}",
+        "theme_custom_second=${ThemeSettingsRepository.customThemeSecondColor.value.toThemeHex()}",
         "amoled=${ThemeSettingsRepository.amoledEnabled.value}",
         "liquid_glass_tab_bar=${ThemeSettingsRepository.liquidGlassNativeTabBarEnabled.value}",
-        "desktop_navigation_layout=${ThemeSettingsRepository.desktopNavigationLayout.value.name}",
-        "nav_bar_glow_enabled=${ThemeSettingsRepository.navBarGlowEnabled.value}",
-        "nav_bar_style=${ThemeSettingsRepository.navBarStyle.value.key}",
+        "liquid_glass_auto_hide=${ThemeSettingsRepository.liquidGlassAutoHideOnScrollEnabled.value}",
         "poster_card_style=${PosterCardStyleRepository.uiState.value}",
-        "custom_poster_url=${CustomPosterUrlRepository.pattern.value}",
-        "card_depth_style=${CardDepthStyleRepository.uiState.value}",
         "player=${PlayerSettingsRepository.uiState.value}",
         "stream_badges=${StreamBadgeSettingsRepository.uiState.value}",
         "debrid=${DebridSettingsRepository.uiState.value}",
@@ -399,16 +360,53 @@ object ProfileSettingsSync {
         "meta=${MetaScreenSettingsRepository.uiState.value}",
         "collection_mobile_settings=${CollectionMobileSettingsRepository.uiState.value}",
         "continue=${ContinueWatchingPreferencesRepository.uiState.value}",
-        "trakt_settings=${TrackingSettingsRepository.uiState.value}",
+        "trakt_settings=${TraktSettingsRepository.uiState.value}",
         "trakt_comments=${TraktCommentsSettings.enabled.value}",
         "episode_release_alerts=${EpisodeReleaseNotificationsRepository.uiState.value.isEnabled}",
+        "nuvio_enhanced=${NuvioEnhancedSettingsRepository.uiState.value}",
+        "ai_assistant=${AiAssistantSettingsRepository.uiState.value}",
     ).joinToString(separator = "||")
 
+    private fun exportAiAssistantSettingsPayload(): JsonObject {
+        val settings = AiAssistantSettingsRepository.uiState.value
+        return buildJsonObject {
+            put("enabled", encodeSyncBoolean(settings.enabled))
+            put("web_search_enabled", encodeSyncBoolean(settings.webSearchEnabled))
+            put("provider", encodeSyncString(settings.provider.name))
+            put("tavily_api_key", encodeSyncString(settings.tavilyApiKey))
+            put("cerebras_api_key", encodeSyncString(settings.cerebrasApiKey))
+            put("groq_api_key", encodeSyncString(settings.groqApiKey))
+            put("gemini_api_key", encodeSyncString(settings.geminiApiKey))
+            put("openrouter_api_key", encodeSyncString(settings.openRouterApiKey))
+            put("cerebras_model", encodeSyncString(settings.cerebrasModel))
+            put("groq_model", encodeSyncString(settings.groqModel))
+            put("gemini_model", encodeSyncString(settings.geminiModel))
+            put("openrouter_model", encodeSyncString(settings.openRouterModel))
+        }
+    }
+
+    private fun applyAiAssistantSettingsPayload(payload: JsonObject) {
+        if (payload.isEmpty()) return
+        payload.decodeSyncBoolean("enabled")?.let(AiAssistantSettingsRepository::setEnabled)
+        payload.decodeSyncBoolean("web_search_enabled")?.let(AiAssistantSettingsRepository::setWebSearchEnabled)
+        payload.decodeSyncString("provider")
+            ?.let { value -> runCatching { AiProvider.valueOf(value) }.getOrNull() }
+            ?.let(AiAssistantSettingsRepository::setProvider)
+        payload.decodeSyncString("tavily_api_key")?.let(AiAssistantSettingsRepository::setTavilyApiKey)
+        payload.decodeSyncString("cerebras_api_key")?.let(AiAssistantSettingsRepository::setCerebrasApiKey)
+        payload.decodeSyncString("groq_api_key")?.let(AiAssistantSettingsRepository::setGroqApiKey)
+        payload.decodeSyncString("gemini_api_key")?.let(AiAssistantSettingsRepository::setGeminiApiKey)
+        payload.decodeSyncString("openrouter_api_key")?.let(AiAssistantSettingsRepository::setOpenRouterApiKey)
+        payload.decodeSyncString("cerebras_model")?.let(AiAssistantSettingsRepository::setCerebrasModel)
+        payload.decodeSyncString("groq_model")?.let(AiAssistantSettingsRepository::setGroqModel)
+        payload.decodeSyncString("gemini_model")?.let(AiAssistantSettingsRepository::setGeminiModel)
+        payload.decodeSyncString("openrouter_model")?.let(AiAssistantSettingsRepository::setOpenRouterModel)
+    }
 }
 
 @Serializable
 private data class MobileProfileSettingsBlob(
-    val version: Int = 4,
+    val version: Int = 3,
     val features: MobileProfileSettingsFeatures = MobileProfileSettingsFeatures(),
 )
 
@@ -416,9 +414,6 @@ private data class MobileProfileSettingsBlob(
 private data class MobileProfileSettingsFeatures(
     @SerialName("theme_settings") val themeSettings: JsonObject = JsonObject(emptyMap()),
     @SerialName("poster_card_style_settings_payload") val posterCardStyleSettingsPayload: String = "",
-    @SerialName("custom_poster_url_pattern") val customPosterUrlPattern: String = "",
-    @SerialName("custom_poster_enabled_screens") val customPosterEnabledScreens: String = "",
-    @SerialName("card_depth_style_settings_payload") val cardDepthStyleSettingsPayload: String = "",
     @SerialName("player_settings") val playerSettings: JsonObject = JsonObject(emptyMap()),
     @SerialName("stream_badge_settings") val streamBadgeSettings: JsonObject = JsonObject(emptyMap()),
     @SerialName("debrid_settings") val debridSettings: JsonObject = JsonObject(emptyMap()),
@@ -430,6 +425,8 @@ private data class MobileProfileSettingsFeatures(
     @SerialName("trakt_settings_payload") val traktSettingsPayload: String = "",
     @SerialName("trakt_comments_settings") val traktCommentsSettings: JsonObject = JsonObject(emptyMap()),
     @SerialName("notifications_settings") val notificationsSettings: NotificationsSettingsPayload = NotificationsSettingsPayload(),
+    @SerialName("nuvio_enhanced_settings_payload") val nuvioEnhancedSettingsPayload: String = "",
+    @SerialName("ai_assistant_settings") val aiAssistantSettings: JsonObject = JsonObject(emptyMap()),
 )
 
 @Serializable

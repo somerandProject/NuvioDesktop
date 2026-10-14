@@ -376,6 +376,12 @@ data class CatalogRoute(
     val launchId: Long,
 )
 
+internal data class PosterActionTarget(
+    val preview: MetaPreview,
+    val libraryItem: LibraryItem? = null,
+    val libraryListKey: String? = null,
+)
+
 enum class AppScreenTab {
     Home,
     Search,
