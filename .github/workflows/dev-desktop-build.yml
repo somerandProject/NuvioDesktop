@@ -10,6 +10,10 @@ on:
   push:
     branches:
       - Dev
+    paths-ignore:
+      - "nuvio-enhanced/**"
+      - ".github/**"
+      - ".impeccable/**"
   workflow_dispatch:
 
 permissions:
