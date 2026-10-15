@@ -494,15 +494,23 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Assemble release notes
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          # Changelog for this build only: everything since the previous build's
-          # tag (or the last few commits on the very first build).
-          prev_tag="$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)"
-          if [ -n "${prev_tag}" ]; then
-            changes="$(git log --no-merges --pretty='- %s' "${prev_tag}..HEAD")"
-          else
-            changes="$(git log --no-merges --pretty='- %s' -n 6 HEAD)"
+          # Changelog for this build only. Prefer the push's "before" SHA (the
+          # exact commits in this run); fall back to the previous build's tag.
+          changes=""
+          if [ -n "${BEFORE_SHA:-}" ] && [ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ] && git rev-parse -q --verify "${BEFORE_SHA}^{commit}" >/dev/null 2>&1; then
+            changes="$(git log --no-merges --pretty='- %s' "${BEFORE_SHA}..HEAD" || true)"
+          fi
+          if [ -z "${changes}" ]; then
+            prev_tag="$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)"
+            if [ -n "${prev_tag}" ]; then
+              changes="$(git log --no-merges --pretty='- %s' "${prev_tag}..HEAD" || true)"
+            else
+              changes="$(git log --no-merges --pretty='- %s' -n 6 HEAD || true)"
+            fi
           fi
           if [ -z "${changes}" ]; then
             changes="- Internal build (no user-facing changes)"
