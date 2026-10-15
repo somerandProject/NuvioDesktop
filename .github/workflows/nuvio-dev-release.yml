@@ -586,6 +586,9 @@ jobs:
                 --jq '.assets[] | select(.name | test("android")).id' | while read -r id; do
                 [ -n "${id}" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${id}" || true
               done
+              # Refresh the changelog but keep the title/version, so the desktop
+              # in-app updater is not told a newer desktop build exists.
+              gh release edit nuvio-dev-latest --notes-file release-notes.md
             else
               gh release create nuvio-dev-latest \
                 --title "NuvioDev ${ROLLING_VERSION}" \
