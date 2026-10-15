@@ -516,7 +516,7 @@ jobs:
             changes="- Internal build (no user-facing changes)"
           fi
           {
-            echo "## NuvioDev ${ROLLING_VERSION}"
+            echo "## NuvioDev"
             echo
             echo "### Changes in this build"
             echo
