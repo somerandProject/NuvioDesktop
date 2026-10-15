@@ -41,6 +41,7 @@ data class PlayerSettingsUiState(
     val resizeMode: PlayerResizeMode = PlayerResizeMode.Fit,
     val holdToSpeedEnabled: Boolean = true,
     val holdToSpeedValue: Float = 2f,
+    val playbackSpeed: Float = 1f,
     val volumeBoostEnabled: Boolean = false,
     val keyboardSeekStepSeconds: Int = 10,
     val touchGesturesEnabled: Boolean = true,
@@ -126,6 +127,7 @@ object PlayerSettingsRepository {
     private var resizeMode = PlayerResizeMode.Fit
     private var holdToSpeedEnabled = true
     private var holdToSpeedValue = 2f
+    private var playbackSpeed = 1f
     private var volumeBoostEnabled = false
     private var keyboardSeekStepSeconds = 10
     private var touchGesturesEnabled = true
@@ -216,6 +218,7 @@ object PlayerSettingsRepository {
         resizeMode = PlayerResizeMode.Fit
         holdToSpeedEnabled = true
         holdToSpeedValue = 2f
+        playbackSpeed = 1f
         volumeBoostEnabled = false
         keyboardSeekStepSeconds = 10
         touchGesturesEnabled = true
@@ -302,6 +305,7 @@ object PlayerSettingsRepository {
             ?: PlayerResizeMode.Fit
         holdToSpeedEnabled = PlayerSettingsStorage.loadHoldToSpeedEnabled() ?: true
         holdToSpeedValue = PlayerSettingsStorage.loadHoldToSpeedValue() ?: 2f
+        playbackSpeed = PlayerSettingsStorage.loadPlaybackSpeed()?.coerceIn(0.25f, 4f) ?: 1f
         volumeBoostEnabled = PlayerSettingsStorage.loadVolumeBoostEnabled() ?: false
         keyboardSeekStepSeconds = PlayerSettingsStorage.loadKeyboardSeekStepSeconds() ?: 10
         touchGesturesEnabled = PlayerSettingsStorage.loadTouchGesturesEnabled() ?: true
@@ -528,6 +532,15 @@ object PlayerSettingsRepository {
         holdToSpeedValue = normalized
         publish()
         PlayerSettingsStorage.saveHoldToSpeedValue(normalized)
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        ensureLoaded()
+        val normalized = speed.coerceIn(0.25f, 4f)
+        if (playbackSpeed == normalized) return
+        playbackSpeed = normalized
+        publish()
+        PlayerSettingsStorage.savePlaybackSpeed(normalized)
     }
 
     fun setVolumeBoostEnabled(enabled: Boolean) {
@@ -1219,6 +1232,7 @@ object PlayerSettingsRepository {
             resizeMode = resizeMode,
             holdToSpeedEnabled = holdToSpeedEnabled,
             holdToSpeedValue = holdToSpeedValue,
+            playbackSpeed = playbackSpeed,
             volumeBoostEnabled = volumeBoostEnabled,
             keyboardSeekStepSeconds = keyboardSeekStepSeconds,
             touchGesturesEnabled = touchGesturesEnabled,

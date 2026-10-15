@@ -29,6 +29,7 @@ actual object PlayerSettingsStorage {
     private const val resizeModeKey = "resize_mode"
     private const val holdToSpeedEnabledKey = "hold_to_speed_enabled"
     private const val holdToSpeedValueKey = "hold_to_speed_value"
+    private const val playbackSpeedKey = "playback_speed"
     private const val volumeBoostEnabledKey = "volume_boost_enabled"
     private const val keyboardSeekStepSecondsKey = "keyboard_seek_step_seconds"
     private const val touchGesturesEnabledKey = "touch_gestures_enabled"
@@ -119,6 +120,7 @@ actual object PlayerSettingsStorage {
         resizeModeKey,
         holdToSpeedEnabledKey,
         holdToSpeedValueKey,
+        playbackSpeedKey,
         volumeBoostEnabledKey,
         keyboardSeekStepSecondsKey,
         nvidiaRtxSuperResolutionEnabledKey,
@@ -336,6 +338,23 @@ actual object PlayerSettingsStorage {
         preferences
             ?.edit()
             ?.putFloat(ProfileScopedKey.of(holdToSpeedValueKey), speed)
+            ?.apply()
+    }
+
+    actual fun loadPlaybackSpeed(): Float? =
+        preferences?.let { sharedPreferences ->
+            val key = ProfileScopedKey.of(playbackSpeedKey)
+            if (sharedPreferences.contains(key)) {
+                sharedPreferences.getFloat(key, 1f)
+            } else {
+                null
+            }
+        }
+
+    actual fun savePlaybackSpeed(speed: Float) {
+        preferences
+            ?.edit()
+            ?.putFloat(ProfileScopedKey.of(playbackSpeedKey), speed)
             ?.apply()
     }
 
@@ -1394,6 +1413,7 @@ actual object PlayerSettingsStorage {
         loadResizeMode()?.let { put(resizeModeKey, encodeSyncString(it)) }
         loadHoldToSpeedEnabled()?.let { put(holdToSpeedEnabledKey, encodeSyncBoolean(it)) }
         loadHoldToSpeedValue()?.let { put(holdToSpeedValueKey, encodeSyncFloat(it)) }
+        loadPlaybackSpeed()?.let { put(playbackSpeedKey, encodeSyncFloat(it)) }
         loadVolumeBoostEnabled()?.let { put(volumeBoostEnabledKey, encodeSyncBoolean(it)) }
         loadKeyboardSeekStepSeconds()?.let { put(keyboardSeekStepSecondsKey, encodeSyncInt(it)) }
         loadTouchGesturesEnabled()?.let { put(touchGesturesEnabledKey, encodeSyncBoolean(it)) }
@@ -1479,6 +1499,7 @@ actual object PlayerSettingsStorage {
         payload.decodeSyncString(resizeModeKey)?.let(::saveResizeMode)
         payload.decodeSyncBoolean(holdToSpeedEnabledKey)?.let(::saveHoldToSpeedEnabled)
         payload.decodeSyncFloat(holdToSpeedValueKey)?.let(::saveHoldToSpeedValue)
+        payload.decodeSyncFloat(playbackSpeedKey)?.let(::savePlaybackSpeed)
         payload.decodeSyncBoolean(volumeBoostEnabledKey)?.let(::saveVolumeBoostEnabled)
         payload.decodeSyncInt(keyboardSeekStepSecondsKey)?.let(::saveKeyboardSeekStepSeconds)
         payload.decodeSyncBoolean(touchGesturesEnabledKey)?.let(::saveTouchGesturesEnabled)

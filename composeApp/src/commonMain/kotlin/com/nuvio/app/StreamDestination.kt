@@ -174,7 +174,8 @@ internal fun StreamDestination(
     ) {
         val infoHash = stream.p2pInfoHash ?: return
         val sentinelUrl = p2pSentinelUrl(infoHash, stream.p2pFileIdx)
-        if (playerSettings.streamReuseLastLinkEnabled) {
+        // Always remember the selected link so Continue Watching can resume it.
+        if (stream.serverTarget == null) {
             val cacheKey = StreamLinkCacheRepository.contentKey(
                 type = launch.type,
                 videoId = effectiveVideoId,
@@ -279,12 +280,12 @@ internal fun StreamDestination(
 
     var reuseHandled by rememberSaveable(launch.videoId, effectiveVideoId) { mutableStateOf(false) }
     var reuseNavigated by remember { mutableStateOf(false) }
-    LaunchedEffect(effectiveVideoId, hasResolvedVideoId, playerSettings.streamReuseLastLinkEnabled, launch.manualSelection) {
+    LaunchedEffect(effectiveVideoId, hasResolvedVideoId, playerSettings.streamReuseLastLinkEnabled, launch.preferLastStream, launch.manualSelection) {
         if (!hasResolvedVideoId) return@LaunchedEffect
         if (reuseHandled) return@LaunchedEffect
         reuseHandled = true
         if (launch.manualSelection) return@LaunchedEffect
-        if (!playerSettings.streamReuseLastLinkEnabled) return@LaunchedEffect
+        if (!playerSettings.streamReuseLastLinkEnabled && !launch.preferLastStream) return@LaunchedEffect
         val cacheKey = StreamLinkCacheRepository.contentKey(
             type = launch.type,
             videoId = effectiveVideoId,
@@ -292,7 +293,15 @@ internal fun StreamDestination(
             season = launch.seasonNumber,
             episode = launch.episodeNumber,
         )
-        val maxAgeMs = playerSettings.streamReuseLastLinkCacheHours * 60L * 60L * 1000L
+        // A Continue Watching launch reuses the last selected link for far longer
+        // than the configurable reuse window: the user explicitly expects their
+        // previous choice to carry over. Expired/credential-bearing links are
+        // still rejected by getValid.
+        val maxAgeMs = if (launch.preferLastStream) {
+            30L * 24L * 60L * 60L * 1000L
+        } else {
+            playerSettings.streamReuseLastLinkCacheHours * 60L * 60L * 1000L
+        }
         val cached = StreamLinkCacheRepository.getValid(cacheKey, maxAgeMs)
         if (cached != null) {
             if (cached.url.isBlank() && !cached.infoHash.isNullOrBlank()) {
@@ -461,7 +470,7 @@ internal fun StreamDestination(
         }
         autoPlayHandled = true
         val serverResumeMs = serverResumePositionMs(stream)
-        if (playerSettings.streamReuseLastLinkEnabled && stream.serverTarget == null) {
+        if (stream.serverTarget == null) {
             val cacheKey = StreamLinkCacheRepository.contentKey(
                 type = launch.type,
                 videoId = effectiveVideoId,
@@ -655,7 +664,7 @@ internal fun StreamDestination(
             return
         }
         val sourceUrl = stream.playableDirectUrl ?: return
-        if (saveForReuse && playerSettings.streamReuseLastLinkEnabled && stream.serverTarget == null) {
+        if (saveForReuse && stream.serverTarget == null) {
             val cacheKey = StreamLinkCacheRepository.contentKey(
                 type = launch.type,
                 videoId = effectiveVideoId,
