@@ -42,6 +42,7 @@ data class PlayerSettingsUiState(
     val holdToSpeedEnabled: Boolean = true,
     val holdToSpeedValue: Float = 2f,
     val playbackSpeed: Float = 1f,
+    val rememberPlaybackSpeed: Boolean = true,
     val volumeBoostEnabled: Boolean = false,
     val keyboardSeekStepSeconds: Int = 10,
     val touchGesturesEnabled: Boolean = true,
@@ -128,6 +129,7 @@ object PlayerSettingsRepository {
     private var holdToSpeedEnabled = true
     private var holdToSpeedValue = 2f
     private var playbackSpeed = 1f
+    private var rememberPlaybackSpeed = true
     private var volumeBoostEnabled = false
     private var keyboardSeekStepSeconds = 10
     private var touchGesturesEnabled = true
@@ -219,6 +221,7 @@ object PlayerSettingsRepository {
         holdToSpeedEnabled = true
         holdToSpeedValue = 2f
         playbackSpeed = 1f
+        rememberPlaybackSpeed = true
         volumeBoostEnabled = false
         keyboardSeekStepSeconds = 10
         touchGesturesEnabled = true
@@ -306,6 +309,7 @@ object PlayerSettingsRepository {
         holdToSpeedEnabled = PlayerSettingsStorage.loadHoldToSpeedEnabled() ?: true
         holdToSpeedValue = PlayerSettingsStorage.loadHoldToSpeedValue() ?: 2f
         playbackSpeed = PlayerSettingsStorage.loadPlaybackSpeed()?.coerceIn(0.25f, 4f) ?: 1f
+        rememberPlaybackSpeed = PlayerSettingsStorage.loadRememberPlaybackSpeed() ?: true
         volumeBoostEnabled = PlayerSettingsStorage.loadVolumeBoostEnabled() ?: false
         keyboardSeekStepSeconds = PlayerSettingsStorage.loadKeyboardSeekStepSeconds() ?: 10
         touchGesturesEnabled = PlayerSettingsStorage.loadTouchGesturesEnabled() ?: true
@@ -540,7 +544,19 @@ object PlayerSettingsRepository {
         if (playbackSpeed == normalized) return
         playbackSpeed = normalized
         publish()
-        PlayerSettingsStorage.savePlaybackSpeed(normalized)
+        // Only remember the speed across episodes/restarts when the user opted
+        // in; otherwise it is treated as a per-episode speed.
+        if (rememberPlaybackSpeed) {
+            PlayerSettingsStorage.savePlaybackSpeed(normalized)
+        }
+    }
+
+    fun setRememberPlaybackSpeed(enabled: Boolean) {
+        ensureLoaded()
+        if (rememberPlaybackSpeed == enabled) return
+        rememberPlaybackSpeed = enabled
+        publish()
+        PlayerSettingsStorage.saveRememberPlaybackSpeed(enabled)
     }
 
     fun setVolumeBoostEnabled(enabled: Boolean) {
@@ -1233,6 +1249,7 @@ object PlayerSettingsRepository {
             holdToSpeedEnabled = holdToSpeedEnabled,
             holdToSpeedValue = holdToSpeedValue,
             playbackSpeed = playbackSpeed,
+            rememberPlaybackSpeed = rememberPlaybackSpeed,
             volumeBoostEnabled = volumeBoostEnabled,
             keyboardSeekStepSeconds = keyboardSeekStepSeconds,
             touchGesturesEnabled = touchGesturesEnabled,

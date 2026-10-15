@@ -487,6 +487,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          fetch-tags: true
       - name: Download all artifacts
         uses: actions/download-artifact@v5
         with:
@@ -495,11 +496,23 @@ jobs:
       - name: Assemble release notes
         run: |
           set -euo pipefail
+          # Changelog for this build only: everything since the previous build's
+          # tag (or the last few commits on the very first build).
+          prev_tag="$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)"
+          if [ -n "${prev_tag}" ]; then
+            changes="$(git log --no-merges --pretty='- %s' "${prev_tag}..HEAD")"
+          else
+            changes="$(git log --no-merges --pretty='- %s' -n 6 HEAD)"
+          fi
+          if [ -z "${changes}" ]; then
+            changes="- Internal build (no user-facing changes)"
+          fi
           {
-            echo "## What's new in ${VERSION}"
+            echo "## NuvioDev ${ROLLING_VERSION}"
             echo
-            echo "- **Android app is now NuvioMobile-Enhanced** (version 0.4). It installs alongside the official Nuvio Enhanced app."
-            echo "- Desktop unchanged: Windows MSI, Linux AppImage and macOS builds are the same NuvioDev app as before."
+            echo "### Changes in this build"
+            echo
+            echo "${changes}"
             echo
             echo "### Downloads"
             echo

@@ -513,6 +513,15 @@ private fun PlaybackSettingsSection(
                             onClick = { showHoldToSpeedValueDialog = true },
                         )
                     }
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsSwitchRow(
+                        title = stringResource(Res.string.settings_playback_remember_speed),
+                        description = stringResource(Res.string.settings_playback_remember_speed_description),
+                        checked = autoPlayPlayerSettings.rememberPlaybackSpeed,
+                        enabled = !autoPlayPlayerSettings.externalPlayerEnabled,
+                        isTablet = isTablet,
+                        onCheckedChange = PlayerSettingsRepository::setRememberPlaybackSpeed,
+                    )
                     if (isDesktop) {
                         SettingsGroupDivider(isTablet = isTablet)
                         SettingsSwitchRow(

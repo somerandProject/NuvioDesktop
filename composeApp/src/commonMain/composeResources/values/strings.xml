@@ -1154,6 +1154,8 @@
     <string name="settings_playback_hold_speed">Hold Speed</string>
     <string name="settings_playback_hold_to_speed">Hold To Speed</string>
     <string name="settings_playback_hold_to_speed_description">Long-press anywhere on the player surface to temporarily boost playback speed.</string>
+    <string name="settings_playback_remember_speed">Remember Playback Speed</string>
+    <string name="settings_playback_remember_speed_description">Keep the current playback speed when switching to the next episode or video.</string>
     <string name="settings_playback_volume_boost">Volume Boost</string>
     <string name="settings_playback_volume_boost_description">Allow the player volume to go above 100% up to 200% with the wheel, keys, and slider.</string>
     <string name="settings_playback_seek_step">Seek Step</string>

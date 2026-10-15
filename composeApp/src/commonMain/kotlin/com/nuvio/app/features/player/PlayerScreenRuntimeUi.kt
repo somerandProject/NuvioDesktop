@@ -545,13 +545,6 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                     playerController = controller.takeIf { sourceAvailable }
                     playerLifecycleController = controller
                     playerControllerSourceUrl = surfaceSource?.sourceUrl
-                    // Apply the persisted playback speed so it carries over
-                    // across media and app restarts.
-                    val persistedSpeed = PlayerSettingsRepository.uiState.value.playbackSpeed
-                        .coerceIn(0.25f, 4f)
-                    if (abs(persistedSpeed - 1f) > 0.01f) {
-                        controller.setPlaybackSpeed(persistedSpeed)
-                    }
                 },
                 onSnapshot = { snapshot ->
                     if (!updatePlaybackSnapshot(snapshot)) return@PlatformPlayerSurface

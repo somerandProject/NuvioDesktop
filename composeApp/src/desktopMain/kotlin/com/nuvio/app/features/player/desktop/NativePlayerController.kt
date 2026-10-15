@@ -343,6 +343,7 @@ internal class NativePlayerController(
                                 "initialPositionMs=${pending.initialPositionMs}"
                         }
                         applyRememberedVolume()
+                        applyRememberedSpeed()
                         updateControls(controlsState)
                         setResizeMode(rememberedResizeMode)
                         if (currentNowPlayingTitle.isNotEmpty() || currentArtworkUrl.isNotEmpty()) {
@@ -645,6 +646,21 @@ internal class NativePlayerController(
         NativePlayerBridge.setVolume(current, level)
         controlsState = controlsState.copy(volumeLevel = level)
         log.d { "applied remembered volume level=$level handle=$current" }
+    }
+
+    private fun applyRememberedSpeed() {
+        val current = handle
+        if (current == 0L) return
+        val settings = PlayerSettingsRepository.uiState.value
+        // Carry the user's chosen speed across episodes/media when enabled;
+        // otherwise each new item starts at normal speed.
+        val target = if (settings.rememberPlaybackSpeed) {
+            settings.playbackSpeed.coerceIn(0.25f, 4f)
+        } else {
+            1f
+        }
+        NativePlayerBridge.setSpeed(current, target)
+        log.d { "applied remembered speed=$target handle=$current" }
     }
 
     private val keyboardSeekStepMs: Long
